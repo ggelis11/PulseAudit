@@ -299,6 +299,20 @@ async function apiAppend(sheet, row){
     return null;
   }
 }
+async function apiAppendMany(sheet, rows){
+  try{
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: {'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({sheet, action:'appendMany', rows})
+    });
+    const data = await res.json();
+    return !!(data && data.ok);
+  }catch(e){
+    console.error('apiAppendMany failed', sheet, e);
+    return false;
+  }
+}
 async function apiUpdateRow(sheet, rowNum, data){
   try{
     const res = await fetch(API_URL, {
@@ -383,6 +397,8 @@ const State = {
   editingCreneauRow: null,
   editingCriterionRow: null,
   auditsRows: [], // cache brut de l'onglet Audits_MM
+  auditDetailRows: [], // cache brut de l'onglet Audits_Detail
+  dashCritFilter: '',
   auditCtx: null,
   loaded: false,
 };
@@ -410,6 +426,7 @@ async function loadAllData(){
     .map(r=>({ label: String(r['Critère']), category: String(r['Catégorie']||'').trim(), row: r['_row'] }));
   State.auditors = auditeurs.map(r=>r["Nom de l'auditeur"]).filter(Boolean);
   State.auditsRows = data.Audits_MM || [];
+  State.auditDetailRows = data.Audits_Detail || [];
   State.loaded = true;
   return true;
 }
@@ -582,6 +599,12 @@ async function renderDashboardHTML(){
       return `<tr><td>${escapeHtml(a.name)}</td><td class="num">${a.completed}</td><td class="num" style="color:${avgCls};font-weight:600;">${avgLabel}</td></tr>`;
     }).join('');
 
+  const critAnalysisRows = computeCriteriaStats(State.dashCritFilter).map(c=>{
+    const cls = c.avg===null?'var(--ink-faint)':(c.avg>=85?'var(--success)':(c.avg>=60?'var(--warning)':'var(--danger)'));
+    const catBadge = c.category?`<span class="badge badge-neutral" style="margin-right:7px;">${escapeHtml(c.category)}</span>`:'';
+    return `<tr><td>${catBadge}${escapeHtml(c.label)}</td><td class="num" style="color:${cls};font-weight:600;">${c.avg===null?'—':c.avg+'%'}</td><td class="num">${c.count}</td></tr>`;
+  }).join('');
+
   return `
   <div class="page-head"><h1>Tableau de bord</h1><p>Vue d'ensemble des audits MM, cumul depuis le ${new Date(stats.range[0]+'T00:00:00').toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'})}.</p></div>
 
@@ -634,8 +657,42 @@ async function renderDashboardHTML(){
       <tbody>${audRows || '<tr><td colspan="3" style="color:var(--ink-faint);padding:16px;">Aucun audit réalisé pour l\'instant.</td></tr>'}</tbody>
     </table>
   </div>
+
+  <div class="section-title">
+    Analyse par critère
+    <select onchange="setDashCritFilter(this.value)" style="font-family:var(--font-body);font-weight:600;font-size:12.5px;padding:6px 9px;border:1px solid var(--line);border-radius:7px;background:var(--surface);">
+      <option value="">Tous les services</option>
+      ${State.services.map(s=>`<option value="${escapeHtml(s)}" ${State.dashCritFilter===s?'selected':''}>${escapeHtml(s)}</option>`).join('')}
+    </select>
+  </div>
+  <div class="card" style="padding:6px 8px;">
+    <table class="svc-table">
+      <thead><tr><th>Critère</th><th>Moyenne</th><th>Réponses</th></tr></thead>
+      <tbody>${critAnalysisRows || '<tr><td colspan="3" style="color:var(--ink-faint);padding:16px;">Aucune donnée détaillée pour l\'instant — réalisez un audit pour voir apparaître l\'analyse.</td></tr>'}</tbody>
+    </table>
+    <p style="font-size:11.5px;color:var(--ink-faint);padding:10px 6px 4px;">Triés du plus faible au plus fort — les premières lignes sont les points à travailler en priorité.</p>
+  </div>
   `;
 }
+
+function computeCriteriaStats(serviceFilter){
+  const byLabel = {};
+  State.auditDetailRows.forEach(r=>{
+    if(serviceFilter && r['Service']!==serviceFilter) return;
+    const label = r['Critère'];
+    if(!label) return;
+    byLabel[label] = byLabel[label] || {sum:0, count:0, category: r['Catégorie']||''};
+    const sc = Number(r['Score (%)']);
+    byLabel[label].sum += isNaN(sc)?0:sc;
+    byLabel[label].count += 1;
+  });
+  return Object.entries(byLabel)
+    .map(([label,v])=>({label, category:v.category, avg: v.count?Math.round(v.sum/v.count):null, count:v.count}))
+    .sort((a,b)=>(a.avg===null?101:a.avg) - (b.avg===null?101:b.avg));
+}
+
+function setDashCritFilter(v){ State.dashCritFilter = v; renderUI(); }
+window.setDashCritFilter = setDashCritFilter;
 
 /* ============================= PLANNING ============================= */
 function renderPlanningHTML(){
@@ -884,6 +941,27 @@ function renderAuditHTML(){
   if(ctx.mode==='view'){
     const pct = Math.round(Number(row['Score (%)'])||0);
     const cls = pct>=85?'success':(pct>=60?'warning':'danger');
+    const details = State.auditDetailRows.filter(d=>d['AuditID']===row['ID']);
+    let detailHtml;
+    if(details.length){
+      const groups = []; const pos = {};
+      details.forEach(d=>{
+        const key = d['Catégorie'] || '';
+        if(!(key in pos)){ pos[key] = groups.length; groups.push({category:key, items:[]}); }
+        groups[pos[key]].items.push(d);
+      });
+      detailHtml = `<div class="crit-list">` + groups.map(g=>{
+        const header = g.category ? `<div class="crit-group-title">${escapeHtml(g.category)}</div>` : '';
+        const cards = g.items.map(d=>{
+          const lab = d['Réponse'];
+          const dcls = lab==='Oui'?'success':(lab==='Partiel'?'warning':'danger');
+          return `<div class="card crit-card"><div class="crit-top"><div class="crit-text">${escapeHtml(d['Critère'])}</div><span class="badge badge-${dcls}">${escapeHtml(lab)}</span></div></div>`;
+        }).join('');
+        return header + cards;
+      }).join('') + `</div>`;
+    } else {
+      detailHtml = `<div class="card" style="padding:16px 18px;"><p style="font-size:13px;color:var(--ink-soft);margin:0;">Détail par critère non disponible pour cet audit (réalisé avant l'activation de cette fonctionnalité).</p></div>`;
+    }
     return `
     <button class="btn btn-ghost btn-sm" onclick="goTo('planning')" style="margin-bottom:16px;">← Retour au planning</button>
     <div class="card result-banner">
@@ -891,7 +969,7 @@ function renderAuditHTML(){
       <div><div style="font-weight:700;">${escapeHtml(t.service)} · ${t.time}</div>
       <div class="audit-meta">Audité par ${escapeHtml(row['Auditeur'])}${row['Audité le']?` · ${new Date(row['Audité le']).toLocaleString('fr-FR',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}`:''}</div></div>
     </div>
-    <div class="card" style="padding:16px 18px;"><p style="font-size:13px;color:var(--ink-soft);margin:0;">Le détail par critère n'est pas conservé — seuls la réservation et le score final sont enregistrés.</p></div>
+    ${detailHtml}
     `;
   }
 
@@ -955,6 +1033,26 @@ async function submitAudit(){
   if(btn){ btn.disabled = true; btn.textContent = 'Enregistrement…'; }
   const ok = await upsertRow(t, {Statut:'Réalisé', 'Score (%)': Math.round(score*100), 'Audité le': new Date().toISOString()});
   if(!ok){ alert("L'enregistrement a échoué — vérifiez la connexion au Google Sheet et réessayez."); if(btn){ btn.disabled=false; btn.textContent="Enregistrer l'audit"; } return; }
+
+  // détail par critère (best-effort : le score global est déjà sauvegardé, on ne bloque pas dessus)
+  const finalRow = findRow(State.weekKey, t);
+  const auditId = finalRow ? finalRow['ID'] : rowId(State.weekKey, t);
+  const auditorName = finalRow ? finalRow['Auditeur'] : '';
+  const nowIso = new Date().toISOString();
+  const detailRows = State.criteria.map((c,i)=>({
+    AuditID: auditId,
+    Semaine: State.weekKey,
+    Service: t.service,
+    Auditeur: auditorName,
+    'Critère': c.label,
+    'Catégorie': c.category||'',
+    'Réponse': ctx.answers[i]===1?'Oui':(ctx.answers[i]===0.5?'Partiel':'Non'),
+    'Score (%)': Math.round(ctx.answers[i]*100),
+    'Date': nowIso
+  }));
+  const detailOk = await apiAppendMany('Audits_Detail', detailRows);
+  if(detailOk){ State.auditDetailRows = State.auditDetailRows.concat(detailRows); }
+
   State.view='planning'; State.auditCtx=null;
   renderUI();
 }
