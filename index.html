@@ -133,6 +133,10 @@ h1,h2,h3{font-family:var(--font-display);margin:0;letter-spacing:-0.01em;}
 .grid-head.hour-head{background:var(--primary-dark);}
 .grid-hour-label{font-family:var(--font-mono);font-size:10.5px;color:var(--ink-faint);padding:3px 8px 0 0;text-align:right;border-top:1px solid var(--line-soft);}
 .grid-cell{border-top:1px solid var(--line-soft);border-left:1px solid var(--line-soft);display:flex;gap:2px;padding:2px;align-items:stretch;overflow:hidden;}
+.grid-cell.past-day{background-image:repeating-linear-gradient(45deg, var(--surface-alt) 0, var(--surface-alt) 5px, transparent 5px, transparent 10px);}
+.grid-head.past{opacity:.5;}
+.grid-slot.st-locked{background:transparent;border:1.5px dashed var(--line);cursor:not-allowed;opacity:.55;}
+.grid-slot.st-locked .gs-name,.grid-slot.st-locked .gs-sub{color:var(--ink-faint);}
 .grid-slot{flex:1;min-width:0;border-radius:5px;display:flex;flex-direction:column;justify-content:center;padding:2px 5px;cursor:pointer;line-height:1.2;transition:transform .12s,box-shadow .12s;}
 .grid-slot:hover{transform:scale(1.04);z-index:2;box-shadow:0 3px 10px rgba(20,27,44,0.18);}
 .grid-slot.st-empty{background:transparent;border:1.5px dashed var(--svc-color);opacity:.6;}
@@ -377,6 +381,11 @@ function weeksBetween(startKey,endKey){
   return out;
 }
 const DAY_NAMES=['Lundi','Mardi','Mercredi','Jeudi','Vendredi'];
+function isPastDay(weekKey, dayIdx){
+  const d = new Date(weekKey+'T00:00:00');
+  d.setDate(d.getDate()+dayIdx);
+  return toKey(d) < toKey(new Date());
+}
 
 // Google Sheets renvoie parfois les cellules "heure"/"date" comme des objets Date sérialisés (epoch 1899) — on normalise.
 function extractTime(v){
@@ -769,7 +778,7 @@ function renderPlanningGridHTML(){
     return (m%60===0) ? 17 : 5;
   });
 
-  let cells = `<div class="grid-head hour-head">Heure</div>` + DAY_NAMES.map(d=>`<div class="grid-head">${d}</div>`).join('');
+  let cells = `<div class="grid-head hour-head">Heure</div>` + DAY_NAMES.map((d,i)=>`<div class="grid-head${isPastDay(State.weekKey,i)?' past':''}">${d}</div>`).join('');
 
   rows.forEach(m=>{
     const hh = String(Math.floor(m/60)).padStart(2,'0');
@@ -777,25 +786,32 @@ function renderPlanningGridHTML(){
     const label = mm==='00' ? `${hh}h` : '';
     cells += `<div class="grid-hour-label">${label}</div>`;
     for(let day=0; day<5; day++){
+      const past = isPastDay(State.weekKey, day);
       const matches = State.templates.filter(x=>x.day===day && toMin(x)===m);
-      if(matches.length===0){ cells += `<div class="grid-cell"></div>`; continue; }
+      if(matches.length===0){ cells += `<div class="grid-cell${past?' past-day':''}"></div>`; continue; }
       const slots = matches.map(t=>{
         const tid = templateId(t).replace(/[^a-zA-Z0-9]/g,'_');
         const row = findRow(State.weekKey, t);
         const status = row && row['Statut']==='Réalisé' ? 'completed' : (row && row['Auditeur'] ? 'reserved' : 'empty');
         const color = serviceColor(t.service);
+        const locked = status==='empty' && past;
         let inner;
         if(status==='completed'){
           const pct = Math.round(Number(row['Score (%)'])||0);
           inner = `<div class="gs-name">${escapeHtml(t.service)}</div><div class="gs-sub">✓ ${pct}%</div>`;
         } else if(status==='reserved'){
           inner = `<div class="gs-name">${escapeHtml(t.service)}</div><div class="gs-sub">${escapeHtml(row['Auditeur'])}</div>`;
+        } else if(locked){
+          inner = `<div class="gs-name">${escapeHtml(t.service)}</div><div class="gs-sub">Passé</div>`;
         } else {
           inner = `<div class="gs-name">${escapeHtml(t.service)}</div><div class="gs-sub">Libre</div>`;
         }
-        return `<div class="grid-slot st-${status}" style="--svc-color:${color}" title="${escapeHtml(t.service)} · ${t.time}${t.label?' · '+escapeHtml(t.label):''}" onclick="gridSlotClick('${tid}')">${inner}</div>`;
+        const cls = locked ? 'st-locked' : `st-${status}`;
+        const clickAttr = locked ? '' : `onclick="gridSlotClick('${tid}')"`;
+        const titleText = locked ? `${escapeHtml(t.service)} · créneau passé, réservation impossible` : `${escapeHtml(t.service)} · ${t.time}${t.label?' · '+escapeHtml(t.label):''}`;
+        return `<div class="grid-slot ${cls}" style="--svc-color:${color}" title="${titleText}" ${clickAttr}>${inner}</div>`;
       }).join('');
-      cells += `<div class="grid-cell">${slots}</div>`;
+      cells += `<div class="grid-cell${past?' past-day':''}">${slots}</div>`;
     }
   });
 
@@ -806,7 +822,7 @@ function renderPlanningGridHTML(){
   <div class="grid-wrap"><div class="plan-grid" style="grid-template-rows:${gridRowsStyle}">${cells}</div></div>
   <div class="grid-legend">
     ${legendServices}
-    <span class="grid-legend-note">Contour pointillé = libre · bloc plein = réservé ou réalisé · cliquez un créneau pour agir.</span>
+    <span class="grid-legend-note">Contour pointillé = libre · bloc plein = réservé ou réalisé · zone hachurée = jour passé (réservation impossible) · cliquez un créneau pour agir.</span>
   </div>
   `;
 }
@@ -855,9 +871,11 @@ function renderSlotCard(t){
   const row = findRow(State.weekKey, t);
   const status = row && row['Statut']==='Réalisé' ? 'completed' : (row && row['Auditeur'] ? 'reserved' : 'empty');
   const tid = templateId(t).replace(/[^a-zA-Z0-9]/g,'_');
+  const past = isPastDay(State.weekKey, t.day);
   let inner = '';
   if(status==='empty'){
-    inner = `
+    inner = past ? `
+      <div class="slot-body"><span class="empty-note">Jour passé — réservation impossible</span></div>` : `
       <div class="slot-body"><span class="empty-note">Aucun auditeur inscrit</span></div>
       <div class="slot-actions">
         <button class="btn btn-primary btn-sm" onclick="openReserveModal('${tid}')">Réserver</button>
@@ -881,7 +899,7 @@ function renderSlotCard(t){
   }
   window.__tplIndex = window.__tplIndex || {};
   window.__tplIndex[tid] = t;
-  return `<div class="card slot-card st-${status}">
+  return `<div class="card slot-card st-${status}"${past && status==='empty' ? ' style="opacity:.6;"' : ''}>
     <div class="slot-top">
       <div><div class="slot-time">${t.time}</div><div class="slot-service">${escapeHtml(t.service)}</div>
       ${t.label?`<div class="slot-label">${escapeHtml(t.label)}</div>`:''}</div>
