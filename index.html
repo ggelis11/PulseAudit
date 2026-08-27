@@ -381,6 +381,10 @@ function weeksBetween(startKey,endKey){
   return out;
 }
 const DAY_NAMES=['Lundi','Mardi','Mercredi','Jeudi','Vendredi'];
+function isServiceActive(name){
+  const m = State.serviceMeta[name];
+  return !m || m.active;
+}
 function isPastDay(weekKey, dayIdx){
   const d = new Date(weekKey+'T00:00:00');
   d.setDate(d.getDate()+dayIdx);
@@ -413,6 +417,7 @@ function extractDateStr(v){
 const State = {
   view: 'planning',
   services: [],   // array of names
+  serviceMeta: {}, // { [name]: {active, row} }
   auditors: [],   // array of auditor names
   criteria: [],   // array of labels (ordered)
   templates: [],  // {id, day, time, service, label}
@@ -438,6 +443,14 @@ async function loadAllData(){
   const criteres = data.Criteres || [];
   const auditeurs = data.Auditeurs || [];
   State.services = services.map(r=>r['Nom du service']).filter(Boolean);
+  State.serviceMeta = {};
+  services.forEach(r=>{
+    const name = r['Nom du service'];
+    if(!name) return;
+    const raw = String(r['Actif']||'').trim().toLowerCase();
+    const active = !(raw==='non' || raw==='false' || raw==='0');
+    State.serviceMeta[name] = { active, row: r['_row'] };
+  });
   State.templates = creneaux
     .filter(r=>r['Jour'] && r['Service'])
     .map(r=>{
@@ -795,7 +808,8 @@ function renderPlanningGridHTML(){
         const row = findRow(State.weekKey, t);
         const status = row && row['Statut']==='Réalisé' ? 'completed' : (row && row['Auditeur'] ? 'reserved' : 'empty');
         const color = serviceColor(t.service);
-        const locked = status==='empty' && past;
+        const inactive = !isServiceActive(t.service);
+        const locked = status==='empty' && (past || inactive);
         let inner;
         if(status==='completed'){
           const pct = Math.round(Number(row['Score (%)'])||0);
@@ -803,13 +817,15 @@ function renderPlanningGridHTML(){
         } else if(status==='reserved'){
           inner = `<div class="gs-name">${escapeHtml(t.service)}</div><div class="gs-sub">${escapeHtml(row['Auditeur'])}</div>`;
         } else if(locked){
-          inner = `<div class="gs-name">${escapeHtml(t.service)}</div><div class="gs-sub">Passé</div>`;
+          inner = `<div class="gs-name">${escapeHtml(t.service)}</div><div class="gs-sub">${inactive && !past ? 'Bientôt' : 'Passé'}</div>`;
         } else {
           inner = `<div class="gs-name">${escapeHtml(t.service)}</div><div class="gs-sub">Libre</div>`;
         }
         const cls = locked ? 'st-locked' : `st-${status}`;
         const clickAttr = locked ? '' : `onclick="gridSlotClick('${tid}')"`;
-        const titleText = locked ? `${escapeHtml(t.service)} · créneau passé, réservation impossible` : `${escapeHtml(t.service)} · ${t.time}${t.label?' · '+escapeHtml(t.label):''}`;
+        const titleText = locked
+          ? (inactive && !past ? `${escapeHtml(t.service)} · pas encore disponible à la réservation` : `${escapeHtml(t.service)} · créneau passé, réservation impossible`)
+          : `${escapeHtml(t.service)} · ${t.time}${t.label?' · '+escapeHtml(t.label):''}`;
         return `<div class="grid-slot ${cls}" style="--svc-color:${color}" title="${titleText}" ${clickAttr}>${inner}</div>`;
       }).join('');
       cells += `<div class="grid-cell${past?' past-day':''}">${slots}</div>`;
@@ -873,9 +889,11 @@ function renderSlotCard(t){
   const status = row && row['Statut']==='Réalisé' ? 'completed' : (row && row['Auditeur'] ? 'reserved' : 'empty');
   const tid = templateId(t).replace(/[^a-zA-Z0-9]/g,'_');
   const past = isPastDay(State.weekKey, t.day);
+  const inactive = !isServiceActive(t.service);
   let inner = '';
   if(status==='empty'){
-    inner = past ? `
+    inner = inactive ? `
+      <div class="slot-body"><span class="empty-note">Pas encore disponible</span></div>` : past ? `
       <div class="slot-body"><span class="empty-note">Jour passé — réservation impossible</span></div>` : `
       <div class="slot-body"><span class="empty-note">Aucun auditeur inscrit</span></div>
       <div class="slot-actions">
@@ -900,7 +918,7 @@ function renderSlotCard(t){
   }
   window.__tplIndex = window.__tplIndex || {};
   window.__tplIndex[tid] = t;
-  return `<div class="card slot-card st-${status}"${past && status==='empty' ? ' style="opacity:.6;"' : ''}>
+  return `<div class="card slot-card st-${status}"${(past||inactive) && status==='empty' ? ' style="opacity:.6;"' : ''}>
     <div class="slot-top">
       <div><div class="slot-time">${t.time}</div><div class="slot-service">${escapeHtml(t.service)}</div>
       ${t.label?`<div class="slot-label">${escapeHtml(t.label)}</div>`:''}</div>
@@ -1154,7 +1172,7 @@ window.submitAudit = submitAudit;
 /* ============================= CONFIG (création depuis l'app, sauvegardée dans le Google Sheet) ============================= */
 function renderConfigHTML(){
   const svcHtml = State.services.length
-    ? `<div class="cfg-list">${State.services.map(s=>`<span class="cfg-chip">${escapeHtml(s)}</span>`).join('')}</div>`
+    ? State.services.map(s=>renderServiceLine(s)).join('')
     : '<p class="hint">Aucun service pour l\'instant.</p>';
 
   const audHtml = State.auditors.length
@@ -1228,6 +1246,27 @@ function renderConfigHTML(){
   </div>
   `;
 }
+
+function renderServiceLine(name){
+  const meta = State.serviceMeta[name] || {active:true, row:null};
+  return `<div class="cfg-line">
+    <span>${escapeHtml(name)}${meta.active?'':' <span class="badge badge-neutral" style="margin-left:6px;">Non réservable</span>'}</span>
+    <span class="cfg-line-actions">
+      <button class="btn btn-ghost btn-sm" onclick="toggleServiceActive('${escapeAttr(name)}')">${meta.active?'Rendre non réservable':'Rendre réservable'}</button>
+    </span>
+  </div>`;
+}
+
+async function toggleServiceActive(name){
+  const meta = State.serviceMeta[name];
+  if(!meta || !meta.row){ alert("Impossible de localiser ce service dans le Sheet — cliquez sur Rafraîchir puis réessayez."); return; }
+  const newActive = !meta.active;
+  const ok = await apiUpdateRow('Services', meta.row, {'Nom du service': name, 'Actif': newActive?'Oui':'Non'});
+  if(!ok){ alert("Échec de la mise à jour — vérifiez la connexion au Google Sheet."); return; }
+  meta.active = newActive;
+  renderUI();
+}
+window.toggleServiceActive = toggleServiceActive;
 
 function renderTemplateLine(t){
   if(State.editingCreneauRow === t.row){
