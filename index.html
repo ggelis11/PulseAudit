@@ -474,6 +474,7 @@ async function upsertRow(t, patch){
     'Score (%)': existing['Score (%)'] || '',
     'Réservé le': existing['Réservé le'] || '',
     'Audité le': existing['Audité le'] || '',
+    'Remarques': existing['Remarques'] || '',
     ...patch
   };
   const ok = await apiUpsert('Audits_MM', row);
@@ -968,7 +969,7 @@ window.confirmReserveModal = confirmReserveModal;
 
 async function cancelReservation(tid){
   const t = tplFromId(tid);
-  const ok = await upsertRow(t, {Auditeur:'', Statut:'', 'Score (%)':'', 'Réservé le':'', 'Audité le':''});
+  const ok = await upsertRow(t, {Auditeur:'', Statut:'', 'Score (%)':'', 'Réservé le':'', 'Audité le':'', 'Remarques':''});
   if(!ok){ alert("Échec de l'annulation — vérifiez la connexion au Google Sheet."); return false; }
   renderUI();
   return true;
@@ -1054,6 +1055,7 @@ function renderAuditHTML(){
       <div><div style="font-weight:700;">${escapeHtml(row['Service'])} · ${escapeHtml(extractTime(row['Heure']))}</div>
       <div class="audit-meta">Audité par ${escapeHtml(row['Auditeur'])}${row['Audité le']?` · ${new Date(row['Audité le']).toLocaleString('fr-FR',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}`:''}</div></div>
     </div>
+    ${row['Remarques'] ? `<div class="card note-card"><label>Remarques</label><div style="font-size:13.5px;color:var(--ink-soft);white-space:pre-wrap;">${escapeHtml(row['Remarques'])}</div></div>` : ''}
     ${detailHtml}
     `;
   }
@@ -1099,7 +1101,7 @@ function renderAuditHTML(){
   </div>
   <div class="crit-list">${critHtml}</div>
   <div class="card note-card">
-    <label>Remarques générales (facultatif — non enregistrées)</label>
+    <label>Remarques générales (facultatif)</label>
     <textarea id="audit-note" placeholder="Points marquants, à discuter en direct avec l'équipe…" oninput="ctxUpdateNote(this.value)">${escapeHtml(ctx.note||'')}</textarea>
   </div>
   <div class="audit-footer">
@@ -1122,7 +1124,7 @@ async function submitAudit(){
   const t = tplFromId(ctx.tid);
   const btn = document.querySelector('.audit-footer .btn-primary');
   if(btn){ btn.disabled = true; btn.textContent = 'Enregistrement…'; }
-  const ok = await upsertRow(t, {Statut:'Réalisé', 'Score (%)': Math.round(score*100), 'Audité le': new Date().toISOString()});
+  const ok = await upsertRow(t, {Statut:'Réalisé', 'Score (%)': Math.round(score*100), 'Audité le': new Date().toISOString(), 'Remarques': ctx.note||''});
   if(!ok){ alert("L'enregistrement a échoué — vérifiez la connexion au Google Sheet et réessayez."); if(btn){ btn.disabled=false; btn.textContent="Enregistrer l'audit"; } return; }
 
   // détail par critère (best-effort : le score global est déjà sauvegardé, on ne bloque pas dessus)
