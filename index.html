@@ -594,18 +594,8 @@ async function renderDashboardHTML(){
     <button class="btn btn-primary" onclick="refresh({full:true})" style="margin-top:8px;">Rafraîchir</button></div>`;
   }
   const stats = await computeStats();
-  const tauxReservation = stats.totalSlots ? Math.round(stats.reserved/stats.totalSlots*100) : 0;
   const avgScoreGlobal = stats.completed ? Math.round(stats.scoreSum/stats.completed*100) : null;
   const avgScoreCls = avgScoreGlobal===null ? 'var(--ink-faint)' : (avgScoreGlobal>=85?'var(--success)':(avgScoreGlobal>=60?'var(--warning)':'var(--danger)'));
-
-  const curWk = currentWeekKey();
-  let curReserved=0, curCompleted=0;
-  State.templates.forEach(t=>{
-    const row = State.auditsRows.find(r=>r['ID']===rowId(curWk,t));
-    if(row && row['Auditeur']) curReserved++;
-    if(row && row['Statut']==='Réalisé') curCompleted++;
-  });
-  const curTotal = State.templates.length;
 
   const chartCols = stats.perWeek.map(w=>{
     const rPct = w.total? Math.round(w.reserved/w.total*100):0;
@@ -652,10 +642,9 @@ async function renderDashboardHTML(){
 
   <div class="kpi-grid">
     <div class="card kpi-card">
-      <div class="kpi-label">Taux de réservation (total)</div>
-      <div class="kpi-value" style="color:var(--warning)">${tauxReservation}%</div>
-      <div class="kpi-sub">${stats.reserved} / ${stats.totalSlots} créneaux réservés</div>
-      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:${tauxReservation}%;background:var(--warning)"></div></div>
+      <div class="kpi-label">Nombre de réservations</div>
+      <div class="kpi-value" style="color:var(--warning)">${stats.reserved}</div>
+      <div class="kpi-sub">créneaux réservés sur ${stats.totalSlots}</div>
     </div>
     <div class="card kpi-card">
       <div class="kpi-label">Nombre d'audits (total)</div>
@@ -667,11 +656,6 @@ async function renderDashboardHTML(){
       <div class="kpi-value" style="color:${avgScoreCls}">${avgScoreGlobal===null?'—':avgScoreGlobal+'%'}</div>
       <div class="kpi-sub">${stats.completed?`sur ${stats.completed} audit${stats.completed>1?'s':''} réalisé${stats.completed>1?'s':''}`:'aucun audit réalisé pour l\'instant'}</div>
       ${avgScoreGlobal!==null?`<div class="kpi-bar"><div class="kpi-bar-fill" style="width:${avgScoreGlobal}%;background:${avgScoreCls}"></div></div>`:''}
-    </div>
-    <div class="card kpi-card">
-      <div class="kpi-label">Cette semaine — réalisé</div>
-      <div class="kpi-value">${curTotal?Math.round(curCompleted/curTotal*100):0}%</div>
-      <div class="kpi-sub">${curCompleted} / ${curTotal} audits</div>
     </div>
   </div>
 
