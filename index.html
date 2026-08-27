@@ -815,10 +815,33 @@ function gridSlotClick(tid){
   const t = tplFromId(tid);
   const row = findRow(State.weekKey, t);
   if(row && row['Statut']==='Réalisé'){ viewAudit(tid); }
-  else if(row && row['Auditeur']){ startAudit(tid); }
+  else if(row && row['Auditeur']){ openReservedSlotModal(tid); }
   else { openReserveModal(tid); }
 }
 window.gridSlotClick = gridSlotClick;
+
+function openReservedSlotModal(tid){
+  const t = tplFromId(tid);
+  const row = findRow(State.weekKey, t);
+  if(!t || !row) return;
+  document.getElementById('modal-card').innerHTML = `
+    <h3>${escapeHtml(t.service)}</h3>
+    <p class="modal-sub">${DAY_NAMES[t.day]} ${t.time} · réservé par ${escapeHtml(row['Auditeur'])}</p>
+    <div class="modal-actions" style="justify-content:flex-start;flex-wrap:wrap;">
+      <button class="btn btn-primary btn-sm" onclick="closeModal();startAudit('${tid}')">Démarrer l'audit</button>
+      <button class="btn btn-ghost btn-sm" style="color:var(--danger);border-color:#F0C7C2;" onclick="cancelReservationFromModal('${tid}')">Annuler la réservation</button>
+    </div>
+  `;
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+window.openReservedSlotModal = openReservedSlotModal;
+
+async function cancelReservationFromModal(tid){
+  if(!confirm('Annuler cette réservation ?')) return;
+  const ok = await cancelReservation(tid, true);
+  if(ok) closeModal();
+}
+window.cancelReservationFromModal = cancelReservationFromModal;
 
 function setPlanningView(v){ State.planningView = v; renderUI(); }
 window.setPlanningView = setPlanningView;
@@ -928,8 +951,9 @@ window.confirmReserveModal = confirmReserveModal;
 async function cancelReservation(tid){
   const t = tplFromId(tid);
   const ok = await upsertRow(t, {Auditeur:'', Statut:'', 'Score (%)':'', 'Réservé le':'', 'Audité le':''});
-  if(!ok){ alert("Échec de l'annulation — vérifiez la connexion au Google Sheet."); return; }
+  if(!ok){ alert("Échec de l'annulation — vérifiez la connexion au Google Sheet."); return false; }
   renderUI();
+  return true;
 }
 window.cancelReservation = cancelReservation;
 
