@@ -553,7 +553,9 @@ async function computeStats(){
     return /^\d{4}-\d{2}-\d{2}$/.test(wk) ? wk : '';
   }).filter(Boolean))].sort();
   const earliest = weeksFound.length ? weeksFound[0] : currentWeekKey();
-  const range = weeksBetween(earliest, currentWeekKey());
+  const latestFound = weeksFound.length ? weeksFound[weeksFound.length-1] : currentWeekKey();
+  const end = latestFound > currentWeekKey() ? latestFound : currentWeekKey();
+  const range = weeksBetween(earliest, end);
   const total = State.templates.length;
 
   let reserved=0, completed=0, totalSlots=0, scoreSum=0;
