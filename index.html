@@ -766,9 +766,9 @@ function renderPlanningGridHTML(){
   const minM = Math.min(...State.templates.map(toMin));
   const maxM = Math.max(...State.templates.map(toMin));
   const startM = Math.floor(minM/60)*60;
-  const endM = Math.min(23*60+45, maxM + 60); // une heure de marge après le dernier créneau
+  const endM = Math.min(23*60+55, maxM + 60); // une heure de marge après le dernier créneau
   const rows = [];
-  for(let m=startM; m<=endM; m+=15) rows.push(m);
+  for(let m=startM; m<=endM; m+=5) rows.push(m);
 
   // une ligne n'occupe une hauteur confortable que si elle contient au moins un créneau (n'importe quel jour) ;
   // les lignes vides sont compressées pour que toute la plage tienne à l'écran sans scroller.
