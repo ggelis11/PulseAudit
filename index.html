@@ -765,22 +765,40 @@ function renderPlanningGridHTML(){
   const toMin = t => { const [h,m] = t.time.split(':').map(Number); return h*60+m; };
   const minM = Math.min(...State.templates.map(toMin));
   const maxM = Math.max(...State.templates.map(toMin));
-  const startM = Math.floor(minM/60)*60;
-  const endM = Math.min(23*60+55, maxM + 60); // une heure de marge après le dernier créneau
-  const rows = [];
-  for(let m=startM; m<=endM; m+=5) rows.push(m);
+  const startHour = Math.floor(minM/60);
+  const endHour = Math.min(23, Math.floor(maxM/60) + 1); // une heure de marge après le dernier créneau
 
-  // une ligne n'occupe une hauteur confortable que si elle contient au moins un créneau (n'importe quel jour) ;
-  // les lignes vides sont compressées pour que toute la plage tienne à l'écran sans scroller.
+  // une heure sans aucun créneau (tous jours confondus) devient une seule ligne compacte,
+  // au lieu de développer ses 12 lignes de 5 minutes — ça évite les grands vides à l'écran.
+  const rowDescriptors = [];
+  for(let h=startHour; h<=endHour; h++){
+    const hourHasAnySlot = State.templates.some(x=>Math.floor(toMin(x)/60)===h);
+    if(hourHasAnySlot){
+      for(let mm=0; mm<60; mm+=5) rowDescriptors.push({m: h*60+mm});
+    } else {
+      rowDescriptors.push({emptyHour:h});
+    }
+  }
+
   const rowHasSlot = m => State.templates.some(x=>toMin(x)===m);
-  const rowHeights = rows.map(m=>{
-    if(rowHasSlot(m)) return 36;
-    return (m%60===0) ? 17 : 5;
+  const rowHeights = rowDescriptors.map(d=>{
+    if(d.emptyHour!==undefined) return 10;
+    if(rowHasSlot(d.m)) return 36;
+    return (d.m%60===0) ? 17 : 5;
   });
 
   let cells = `<div class="grid-head hour-head">Heure</div>` + DAY_NAMES.map((d,i)=>`<div class="grid-head${isPastDay(State.weekKey,i)?' past':''}">${d}</div>`).join('');
 
-  rows.forEach(m=>{
+  rowDescriptors.forEach(d=>{
+    if(d.emptyHour!==undefined){
+      cells += `<div class="grid-hour-label">${String(d.emptyHour).padStart(2,'0')}h</div>`;
+      for(let day=0; day<5; day++){
+        const past = isPastDay(State.weekKey, day);
+        cells += `<div class="grid-cell${past?' past-day':''}"></div>`;
+      }
+      return;
+    }
+    const m = d.m;
     const hh = String(Math.floor(m/60)).padStart(2,'0');
     const mm = String(m%60).padStart(2,'0');
     const label = mm==='00' ? `${hh}h` : '';
