@@ -1210,7 +1210,7 @@ function renderConfigHTML(){
     <div class="cfg-add">
       <select id="new-tpl-day">${DAY_NAMES.map((d,i)=>`<option value="${i}">${d}</option>`).join('')}</select>
       <select id="new-tpl-hour">${Array.from({length:24},(_,h)=>`<option value="${String(h).padStart(2,'0')}" ${h===9?'selected':''}>${String(h).padStart(2,'0')} h</option>`).join('')}</select>
-      <select id="new-tpl-min">${['00','15','30','45'].map(m=>`<option value="${m}">${m}</option>`).join('')}</select>
+      <select id="new-tpl-min">${Array.from({length:12},(_,i)=>String(i*5).padStart(2,'0')).map(m=>`<option value="${m}">${m}</option>`).join('')}</select>
       ${State.services.length
         ? `<select id="new-tpl-service">${svcOptions}</select>`
         : `<select id="new-tpl-service" disabled><option>Ajoutez un service d'abord</option></select>`}
@@ -1261,7 +1261,7 @@ function renderTemplateLine(t){
       <div class="cfg-edit-row">
         <select id="edit-tpl-day-${t.row}">${DAY_NAMES.map((d,i)=>`<option value="${i}" ${i===t.day?'selected':''}>${d}</option>`).join('')}</select>
         <select id="edit-tpl-hour-${t.row}">${Array.from({length:24},(_,h)=>`<option value="${String(h).padStart(2,'0')}" ${String(h).padStart(2,'0')===t.time.split(':')[0]?'selected':''}>${String(h).padStart(2,'0')} h</option>`).join('')}</select>
-        <select id="edit-tpl-min-${t.row}">${['00','15','30','45'].map(m=>`<option value="${m}" ${m===t.time.split(':')[1]?'selected':''}>${m}</option>`).join('')}</select>
+        <select id="edit-tpl-min-${t.row}">${Array.from({length:12},(_,i)=>String(i*5).padStart(2,'0')).map(m=>`<option value="${m}" ${m===t.time.split(':')[1]?'selected':''}>${m}</option>`).join('')}</select>
         <select id="edit-tpl-service-${t.row}">${svcOpts}</select>
         <input type="text" id="edit-tpl-label-${t.row}" value="${escapeAttr(t.label||'')}" placeholder="Libellé">
         <button class="btn btn-primary btn-sm" onclick="saveTemplateEdit(${t.row})">Enregistrer</button>
