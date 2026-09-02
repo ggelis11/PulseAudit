@@ -621,7 +621,8 @@ async function renderDashboardHTML(){
     const avg = s.completed? Math.round(s.scoreSum/s.completed*100):null;
     const avgCls = avg===null?'var(--ink-faint)':(avg>=85?'var(--success)':(avg>=60?'var(--warning)':'var(--danger)'));
     const avgLabel = avg===null?'—':avg+'%';
-    return `<tr class="svc-row-clickable" onclick="openServiceAuditsModal('${escapeAttr(s.name)}')"><td>${escapeHtml(s.name)}</td><td class="num" style="color:${avgCls};font-weight:600;">${avgLabel}</td><td class="num">${s.completed}/${s.total}</td></tr>`;
+    const joker = s.name==='BT - Dessinateurs' ? ' <span title="Joker">🃏</span>' : '';
+    return `<tr class="svc-row-clickable" onclick="openServiceAuditsModal('${escapeAttr(s.name)}')"><td>${escapeHtml(s.name)}${joker}</td><td class="num" style="color:${avgCls};font-weight:600;">${avgLabel}</td><td class="num">${s.completed}/${s.total}</td></tr>`;
   }).join('');
 
   const audRows = Object.values(stats.perAuditor)
