@@ -73,6 +73,8 @@ h1,h2,h3{font-family:var(--font-display);margin:0;letter-spacing:-0.01em;}
 .btn-ghost:hover{background:var(--surface-alt);}
 .btn-danger-text{background:transparent;color:var(--danger);border:none;padding:6px 8px;font-size:13px;font-weight:600;}
 .btn-danger-text:hover{text-decoration:underline;}
+.btn-warning-text{background:transparent;color:#8A5F10;border:none;padding:6px 8px;font-size:13px;font-weight:600;}
+.btn-warning-text:hover{text-decoration:underline;}
 .btn-sm{padding:6px 11px;font-size:12.5px;border-radius:7px;}
 .btn:disabled{opacity:.45;cursor:not-allowed;}
 
@@ -873,12 +875,47 @@ function openReservedSlotModal(tid){
     <p class="modal-sub">${DAY_NAMES[t.day]} ${t.time} · réservé par ${escapeHtml(row['Auditeur'])}</p>
     <div class="modal-actions" style="justify-content:flex-start;flex-wrap:wrap;">
       <button class="btn btn-primary btn-sm" onclick="closeModal();startAudit('${tid}')">Démarrer l'audit</button>
+      <button class="btn btn-ghost btn-sm" style="color:#8A5F10;border-color:var(--warning-soft);" onclick="openNoShowModal('${tid}')">Réunion non tenue</button>
       <button class="btn btn-ghost btn-sm" style="color:var(--danger);border-color:#F0C7C2;" onclick="cancelReservationFromModal('${tid}')">Annuler la réservation</button>
     </div>
   `;
   document.getElementById('modal-overlay').classList.remove('hidden');
 }
 window.openReservedSlotModal = openReservedSlotModal;
+
+function openNoShowModal(tid){
+  const t = tplFromId(tid);
+  const row = findRow(State.weekKey, t);
+  if(!t || !row) return;
+  document.getElementById('modal-card').innerHTML = `
+    <h3>Réunion non tenue</h3>
+    <p class="modal-sub">${escapeHtml(t.service)} · ${DAY_NAMES[t.day]} ${t.time} · réservé par ${escapeHtml(row['Auditeur'])}</p>
+    <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 14px;">Enregistre une note de 0% pour cet audit, sans affecter l'analyse par critère — aucune réponse individuelle n'est comptabilisée.</p>
+    <label for="noshow-note">Motif (facultatif)</label>
+    <input type="text" id="noshow-note" placeholder="Ex : responsable absent">
+    <div class="modal-actions">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()">Annuler</button>
+      <button class="btn btn-primary btn-sm" id="noshow-confirm-btn" onclick="confirmNoShow('${tid}')">Enregistrer la note 0</button>
+    </div>
+  `;
+  document.getElementById('modal-overlay').classList.remove('hidden');
+  setTimeout(()=>{ const el = document.getElementById('noshow-note'); if(el) el.focus(); }, 30);
+}
+window.openNoShowModal = openNoShowModal;
+
+async function confirmNoShow(tid){
+  const input = document.getElementById('noshow-note');
+  const note = (input.value||'').trim();
+  const btn = document.getElementById('noshow-confirm-btn');
+  btn.disabled = true; btn.textContent = '…';
+  const t = tplFromId(tid);
+  const remark = note ? `Réunion non tenue — ${note}` : 'Réunion non tenue — responsable absent.';
+  const ok = await upsertRow(t, {Statut:'Réalisé', 'Score (%)': 0, 'Audité le': new Date().toISOString(), 'Remarques': remark});
+  if(!ok){ alert("Échec de l'enregistrement — vérifiez la connexion au Google Sheet."); btn.disabled=false; btn.textContent='Enregistrer la note 0'; return; }
+  closeModal();
+  renderUI();
+}
+window.confirmNoShow = confirmNoShow;
 
 async function cancelReservationFromModal(tid){
   if(!confirm('Annuler cette réservation ?')) return;
@@ -915,6 +952,7 @@ function renderSlotCard(t){
       <div class="slot-body"><div class="slot-name">👤 ${escapeHtml(row['Auditeur'])}</div><span class="badge badge-warning">Réservé</span></div>
       <div class="slot-actions">
         <button class="btn btn-primary btn-sm" onclick="startAudit('${tid}')">Démarrer l'audit</button>
+        <button class="btn-warning-text btn-sm" onclick="openNoShowModal('${tid}')">Réunion non tenue</button>
         <button class="btn-danger-text btn-sm" onclick="cancelReservation('${tid}')">Annuler</button>
       </div>`;
   } else {
@@ -1075,7 +1113,7 @@ function renderAuditHTML(){
         return header + cards;
       }).join('') + `</div>`;
     } else {
-      detailHtml = `<div class="card" style="padding:16px 18px;"><p style="font-size:13px;color:var(--ink-soft);margin:0;">Détail par critère non disponible pour cet audit (réalisé avant l'activation de cette fonctionnalité).</p></div>`;
+      detailHtml = `<div class="card" style="padding:16px 18px;"><p style="font-size:13px;color:var(--ink-soft);margin:0;">Aucun détail par critère pour cet audit.</p></div>`;
     }
     return `
     <button class="btn btn-ghost btn-sm" onclick="goTo('planning')" style="margin-bottom:16px;">← Retour au planning</button>
