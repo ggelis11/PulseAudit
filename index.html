@@ -258,7 +258,7 @@ h1,h2,h3{font-family:var(--font-display);margin:0;letter-spacing:-0.01em;}
 
 <script>
 /* ============================= API (Google Sheet via Apps Script) ============================= */
-const API_URL = "https://script.google.com/macros/s/AKfycbwNSzbcxarcSIsEy1HNrDoUAmG1EhvQbTqir5iCkzHhJUP30Ji-cOKyU79X3CoQav5oSw/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbwsbwEaU4tOccfepj7g9WmbXW6Iw38nO81R6TIQBKUWTCZlvXIaZd67oG2av0WgZMPPBw/exec";
 
 let lastApiOk = true;
 
@@ -394,6 +394,15 @@ function isPastDay(weekKey, dayIdx){
   d.setDate(d.getDate()+dayIdx);
   return toKey(d) < toKey(new Date());
 }
+function dayDateStr(weekKey, dayIdx){
+  const d = new Date(weekKey+'T00:00:00');
+  d.setDate(d.getDate()+dayIdx);
+  return toKey(d);
+}
+function holidayFor(weekKey, dayIdx){
+  const ds = dayDateStr(weekKey, dayIdx);
+  return State.holidays.find(h=>h.date===ds) || null;
+}
 
 // Google Sheets renvoie parfois les cellules "heure"/"date" comme des objets Date sérialisés (epoch 1899) — on normalise.
 function extractTime(v){
@@ -430,6 +439,7 @@ const State = {
   editingCreneauRow: null,
   editingCriterionRow: null,
   auditsRows: [], // cache brut de l'onglet Audits_MM
+  holidays: [], // [{date, label, row}]
   auditDetailRows: [], // cache brut de l'onglet Audits_Detail
   dashCritFilter: '',
   auditCtx: null,
@@ -468,6 +478,9 @@ async function loadAllData(){
   State.auditors = auditeurs.map(r=>r["Nom de l'auditeur"]).filter(Boolean);
   State.auditsRows = data.Audits_MM || [];
   State.auditDetailRows = data.Audits_Detail || [];
+  State.holidays = (data.Jours_Feries || [])
+    .filter(r=>r['Date'])
+    .map(r=>({ date: extractDateStr(r['Date']), label: r['Libellé']||'', row: r['_row'] }));
   State.loaded = true;
   return true;
 }
@@ -797,13 +810,18 @@ function renderPlanningGridHTML(){
     const jsDay = new Date().getDay(); // 0=dim,1=lun,...6=sam
     return (jsDay>=1 && jsDay<=5) ? jsDay-1 : -1;
   })();
-  let cells = `<div class="grid-head hour-head">Heure</div>` + DAY_NAMES.map((d,i)=>`<div class="grid-head${isPastDay(State.weekKey,i)?' past':''}${i===todayDayIdx?' today':''}">${d}${i===todayDayIdx?'<span class="today-dot" title="Aujourd\'hui"></span>':''}</div>`).join('');
+  let cells = `<div class="grid-head hour-head">Heure</div>` + DAY_NAMES.map((d,i)=>{
+    const hol = holidayFor(State.weekKey, i);
+    const pastCls = (isPastDay(State.weekKey,i) || hol) ? ' past' : '';
+    const holLabel = hol ? `<div style="font-size:9.5px;font-weight:600;opacity:.9;margin-top:1px;">Férié${hol.label?' · '+escapeHtml(hol.label):''}</div>` : '';
+    return `<div class="grid-head${pastCls}${i===todayDayIdx?' today':''}">${d}${i===todayDayIdx?'<span class="today-dot" title="Aujourd\'hui"></span>':''}${holLabel}</div>`;
+  }).join('');
 
   rowDescriptors.forEach(d=>{
     if(d.emptyHour!==undefined){
       cells += `<div class="grid-hour-label">${String(d.emptyHour).padStart(2,'0')}h</div>`;
       for(let day=0; day<5; day++){
-        const past = isPastDay(State.weekKey, day);
+        const past = isPastDay(State.weekKey, day) || !!holidayFor(State.weekKey, day);
         cells += `<div class="grid-cell${past?' past-day':''}"></div>`;
       }
       return;
@@ -814,7 +832,8 @@ function renderPlanningGridHTML(){
     const label = mm==='00' ? `${hh}h` : '';
     cells += `<div class="grid-hour-label">${label}</div>`;
     for(let day=0; day<5; day++){
-      const past = isPastDay(State.weekKey, day);
+      const holiday = !!holidayFor(State.weekKey, day);
+      const past = isPastDay(State.weekKey, day) || holiday;
       const matches = State.templates.filter(x=>x.day===day && toMin(x)===m);
       if(matches.length===0){ cells += `<div class="grid-cell${past?' past-day':''}"></div>`; continue; }
       const slots = matches.map(t=>{
@@ -831,14 +850,14 @@ function renderPlanningGridHTML(){
         } else if(status==='reserved'){
           inner = `<div class="gs-name">${escapeHtml(t.service)}</div><div class="gs-sub">${escapeHtml(row['Auditeur'])}</div>`;
         } else if(locked){
-          inner = `<div class="gs-name">${escapeHtml(t.service)}</div><div class="gs-sub">${inactive && !past ? 'Bientôt' : 'Passé'}</div>`;
+          inner = `<div class="gs-name">${escapeHtml(t.service)}</div><div class="gs-sub">${holiday ? 'Férié' : (inactive && !isPastDay(State.weekKey,day) ? 'Bientôt' : 'Passé')}</div>`;
         } else {
           inner = `<div class="gs-name">${escapeHtml(t.service)}</div><div class="gs-sub">Libre</div>`;
         }
         const cls = locked ? 'st-locked' : `st-${status}`;
         const clickAttr = locked ? '' : `onclick="gridSlotClick('${tid}')"`;
         const titleText = locked
-          ? (inactive && !past ? `${escapeHtml(t.service)} · pas encore disponible à la réservation` : `${escapeHtml(t.service)} · créneau passé, réservation impossible`)
+          ? (holiday ? `${escapeHtml(t.service)} · jour férié, réservation impossible` : (inactive && !isPastDay(State.weekKey,day) ? `${escapeHtml(t.service)} · pas encore disponible à la réservation` : `${escapeHtml(t.service)} · créneau passé, réservation impossible`))
           : `${escapeHtml(t.service)} · ${t.time}${t.label?' · '+escapeHtml(t.label):''}`;
         return `<div class="grid-slot ${cls}" style="--svc-color:${color}" title="${titleText}" ${clickAttr}>${inner}</div>`;
       }).join('');
@@ -853,7 +872,7 @@ function renderPlanningGridHTML(){
   <div class="grid-wrap"><div class="plan-grid" style="grid-template-rows:${gridRowsStyle}">${cells}</div></div>
   <div class="grid-legend">
     ${legendServices}
-    <span class="grid-legend-note">Contour pointillé = libre · bloc plein = réservé ou réalisé · zone hachurée = jour passé (réservation impossible) · cliquez un créneau pour agir.</span>
+    <span class="grid-legend-note">Contour pointillé = libre · bloc plein = réservé ou réalisé · zone hachurée = jour passé ou férié (réservation impossible) · cliquez un créneau pour agir.</span>
   </div>
   `;
 }
@@ -937,11 +956,13 @@ function renderSlotCard(t){
   const row = findRow(State.weekKey, t);
   const status = row && row['Statut']==='Réalisé' ? 'completed' : (row && row['Auditeur'] ? 'reserved' : 'empty');
   const tid = templateId(t).replace(/[^a-zA-Z0-9]/g,'_');
+  const holiday = holidayFor(State.weekKey, t.day);
   const past = isPastDay(State.weekKey, t.day);
   const inactive = !isServiceActive(t.service);
   let inner = '';
   if(status==='empty'){
-    inner = inactive ? `
+    inner = holiday ? `
+      <div class="slot-body"><span class="empty-note">Jour férié${holiday.label?' — '+escapeHtml(holiday.label):''}</span></div>` : inactive ? `
       <div class="slot-body"><span class="empty-note">Pas encore disponible</span></div>` : past ? `
       <div class="slot-body"><span class="empty-note">Jour passé — réservation impossible</span></div>` : `
       <div class="slot-body"><span class="empty-note">Aucun auditeur inscrit</span></div>
@@ -968,7 +989,7 @@ function renderSlotCard(t){
   }
   window.__tplIndex = window.__tplIndex || {};
   window.__tplIndex[tid] = t;
-  return `<div class="card slot-card st-${status}"${(past||inactive) && status==='empty' ? ' style="opacity:.6;"' : ''}>
+  return `<div class="card slot-card st-${status}"${(past||inactive||holiday) && status==='empty' ? ' style="opacity:.6;"' : ''}>
     <div class="slot-top">
       <div><div class="slot-time">${t.time}</div><div class="slot-service">${escapeHtml(t.service)}</div>
       ${t.label?`<div class="slot-label">${escapeHtml(t.label)}</div>`:''}</div>
@@ -1237,6 +1258,10 @@ function renderConfigHTML(){
     ? State.criteria.map((c,i)=>renderCriterionLine(c,i)).join('')
     : '<p class="hint">Aucun critère pour l\'instant.</p>';
 
+  const holHtml = State.holidays.length
+    ? State.holidays.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(h=>renderHolidayLine(h)).join('')
+    : '<p class="hint">Aucun jour férié enregistré.</p>';
+
   const svcOptions = State.services.map(s=>`<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
 
   return `
@@ -1292,6 +1317,17 @@ function renderConfigHTML(){
       <input type="text" id="new-crit-input" placeholder="Nouveau critère" style="flex:1;min-width:200px;" onkeydown="if(event.key==='Enter')addCriterionFromApp()">
       <input type="text" id="new-crit-category" placeholder="Catégorie (facultatif)" list="crit-categories" style="min-width:140px;">
       <button class="btn btn-primary btn-sm" id="add-crit-btn" onclick="addCriterionFromApp()">Ajouter</button>
+    </div>
+  </div>
+
+  <div class="card cfg-section">
+    <h3>Jours fériés</h3>
+    <p class="hint">Enregistré dans l'onglet Jours_Feries. Ces jours sont hachurés et non réservables dans le planning.</p>
+    ${holHtml}
+    <div class="cfg-add">
+      <input type="date" id="new-holiday-date">
+      <input type="text" id="new-holiday-label" placeholder="Libellé (facultatif)" style="min-width:160px;">
+      <button class="btn btn-primary btn-sm" id="add-holiday-btn" onclick="addHolidayFromApp()">Ajouter</button>
     </div>
   </div>
   `;
@@ -1454,6 +1490,46 @@ async function deleteCriterionRow(row){
   renderUI();
 }
 window.deleteCriterionRow = deleteCriterionRow;
+
+function renderHolidayLine(h){
+  const dateLabel = new Date(h.date+'T00:00:00').toLocaleDateString('fr-FR',{weekday:'long', day:'2-digit', month:'long', year:'numeric'});
+  return `<div class="cfg-line">
+    <span><span class="t1">${escapeHtml(dateLabel)}</span>${h.label?` — <span class="t2">${escapeHtml(h.label)}</span>`:''}</span>
+    <span class="cfg-line-actions">
+      <button class="icon-btn danger" onclick="deleteHolidayRow(${h.row})" title="Supprimer">${trashIcon()}</button>
+    </span>
+  </div>`;
+}
+
+async function addHolidayFromApp(){
+  const dateInput = document.getElementById('new-holiday-date');
+  const labelInput = document.getElementById('new-holiday-label');
+  const date = dateInput.value;
+  if(!date) { dateInput.focus(); return; }
+  const label = (labelInput.value||'').trim();
+  const btn = document.getElementById('add-holiday-btn');
+  btn.disabled = true; btn.textContent = '…';
+  const res = await apiAppend('Jours_Feries', {Date: date, 'Libellé': label});
+  if(res){
+    State.holidays.push({date, label, row: res.row});
+    dateInput.value=''; labelInput.value='';
+    renderUI();
+  } else {
+    alert("Échec de l'enregistrement — vérifiez la connexion au Google Sheet.");
+    btn.disabled=false; btn.textContent='Ajouter';
+  }
+}
+window.addHolidayFromApp = addHolidayFromApp;
+
+async function deleteHolidayRow(row){
+  if(!confirm('Supprimer ce jour férié ?')) return;
+  const ok = await apiDeleteRow('Jours_Feries', row);
+  if(!ok){ alert("Échec de la suppression — vérifiez la connexion au Google Sheet."); return; }
+  State.holidays = State.holidays.filter(h=>h.row!==row);
+  State.holidays.forEach(h=>{ if(h.row>row) h.row -= 1; });
+  renderUI();
+}
+window.deleteHolidayRow = deleteHolidayRow;
 
 async function addServiceFromApp(){
   const input = document.getElementById('new-service-input');
