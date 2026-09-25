@@ -140,8 +140,8 @@ h1,h2,h3{font-family:var(--font-display);margin:0;letter-spacing:-0.01em;}
 .recent-strip-vert{flex-wrap:wrap;max-height:260px;overflow-y:auto;overflow-x:hidden;}
 .recent-strip-vert .recent-audit-card{width:100%;min-width:0;}
 .dash-kpi-stack{display:flex;flex-direction:column;gap:14px;justify-content:space-between;}
-.kpi-card-sm{padding:16px;}
-.kpi-card-sm .kpi-value{font-size:26px;margin-top:5px;}
+.kpi-card-sm{padding:22px 20px;}
+.kpi-card-sm .kpi-value{font-size:33px;margin-top:7px;}
 .dash-chart-audits,.dash-chart-reserv{display:flex;flex-direction:column;justify-content:space-between;}
 .chart-card-sm{padding:14px 16px 10px;}
 .chart-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:2px;flex-wrap:wrap;}
@@ -657,7 +657,7 @@ async function renderDashboardHTML(){
   const avgScoreCls = avgScoreGlobal===null ? 'var(--ink-faint)' : (avgScoreGlobal>=85?'var(--success)':(avgScoreGlobal>=60?'var(--warning)':'var(--danger)'));
 
   // 2) graphique audits/semaine + réservations S+1/S+2 (fusionnés, bicolore)
-  const weeklyData = stats.perWeek.map(w=>{
+  const weeklyData = stats.perWeek.filter(w=>w.week<=currentWeekKey()).map(w=>{
     const d = new Date(w.week+'T00:00:00');
     return {label: d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}), value: w.completed, color:'var(--primary)'};
   });
