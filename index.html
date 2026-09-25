@@ -733,10 +733,10 @@ async function renderDashboardHTML(){
   const miniCharts = serviceSeries.map(s=>{
     const last = s.points[s.points.length-1].y;
     const cls = last>=85?'var(--success)':(last>=60?'var(--warning)':'var(--danger)');
-    const chart = svgLineChart([{name:s.name, color:s.color, points:s.points}], {width:220, height:84, showLabels:false});
+    const chart = svgLineChart([{name:s.name, color:s.color, points:s.points}], {width:220, height:84, showLabels:false, showAvgLine:true});
     return `<div class="mini-chart-card">
       <div class="mini-chart-head">
-        <span class="mini-chart-name" title="${escapeAttr(s.name)}">${escapeHtml(s.name)}</span>
+        <h3 class="mini-chart-name" title="${escapeAttr(s.name)}">${escapeHtml(s.name)}</h3>
         <span class="mini-chart-score" style="color:${cls}">${last}%</span>
       </div>
       ${chart}
@@ -1808,14 +1808,23 @@ function svgLineChart(seriesList, opts){
     const label = showLabels ? `<text x="${pad.left-6}" y="${(y+3).toFixed(1)}" font-size="9" text-anchor="end" fill="var(--ink-faint)">${v}</text>` : '';
     return `<line x1="${pad.left}" y1="${y.toFixed(1)}" x2="${(pad.left+innerW).toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--line-soft)" stroke-width="1"/>${label}`;
   }).join('');
+  let avgLine = '';
+  if(opts.showAvgLine){
+    const allY = seriesList.flatMap(s=>s.points.map(p=>p.y));
+    if(allY.length){
+      const avg = allY.reduce((a,b)=>a+b,0)/allY.length;
+      const ay = sy(avg);
+      avgLine = `<line x1="${pad.left}" y1="${ay.toFixed(1)}" x2="${(pad.left+innerW).toFixed(1)}" y2="${ay.toFixed(1)}" stroke="var(--danger)" stroke-width="1.3" stroke-dasharray="4,3"><title>Moyenne : ${Math.round(avg)}%</title></line>`;
+    }
+  }
   const lines = seriesList.map(s=>{
     if(!s.points.length) return '';
     const d = s.points.map((p,i)=>`${i===0?'M':'L'}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(' ');
-    const dots = s.points.map(p=>`<circle cx="${sx(p.x).toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="${showLabels?2.6:3.2}" fill="${s.color}"/>`).join('');
+    const dots = s.points.map((p,i)=>`<circle cx="${sx(p.x).toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="${showLabels?2.6:3.2}" fill="${s.color}"><title>Audit ${i+1} : ${p.y}%</title></circle>`).join('');
     return `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2"/>${dots}`;
   }).join('');
   const par = showLabels ? 'xMinYMid meet' : 'none';
-  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="${par}" style="width:100%;height:${h}px;display:block;">${grid}${lines}</svg>`;
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="${par}" style="width:100%;height:${h}px;display:block;">${grid}${avgLine}${lines}</svg>`;
 }
 
 /* ============================= INIT ============================= */
