@@ -132,13 +132,10 @@ h1,h2,h3{font-family:var(--font-display);margin:0;letter-spacing:-0.01em;}
 .bubble-card{padding:12px;display:flex;align-items:center;}
 .bubble-field{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px;width:100%;}
 .auditor-bubble{border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-family:var(--font-mono);font-weight:700;line-height:1.1;cursor:default;flex-shrink:0;transition:transform .12s;}
-.pie-wrap{flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:8px;}
-.pie-donut{position:relative;width:118px;height:118px;border-radius:50%;flex-shrink:0;}
-.pie-hole{position:absolute;inset:26%;background:var(--surface);border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;}
-.pie-total{font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--ink);line-height:1;}
-.pie-total-label{font-size:9px;color:var(--ink-faint);margin-top:1px;}
-.pie-legend{display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--ink-soft);max-width:118px;max-height:70px;overflow-y:auto;}
-.pie-legend span{display:flex;align-items:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pie-donut{position:relative;width:168px;height:168px;border-radius:50%;flex-shrink:0;cursor:default;}
+.pie-hole{position:absolute;inset:28%;background:var(--surface);border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.pie-total{font-family:var(--font-mono);font-size:22px;font-weight:700;color:var(--ink);line-height:1;}
+.pie-total-label{font-size:10px;color:var(--ink-faint);margin-top:2px;}
 .auditor-bubble:hover{transform:scale(1.06);}
 .ab-initials{font-size:0.9em;opacity:.9;letter-spacing:0.02em;}
 .ab-count{font-size:1.15em;}
@@ -784,13 +781,12 @@ async function renderDashboardHTML(){
       <div class="line-legend" style="margin-top:4px;"><span><span class="legend-dot" style="background:var(--primary)"></span>Réalisés</span><span><span class="legend-dot" style="background:var(--warning)"></span>Réservés (S+1/S+2)</span></div>
     </div>
     <div>
-      <div class="section-title" style="margin-top:0;">Audits par auditeur</div>
-      <div class="card chart-card-sm" style="display:flex;gap:18px;align-items:center;">
-        <div class="pie-wrap">
-          <div class="pie-donut" style="background:${pieBg}">
+      <div class="card chart-card-sm" style="display:flex;gap:30px;align-items:center;">
+        <div style="flex-shrink:0;">
+          <h3 style="margin-bottom:10px;font-size:13.5px;font-weight:700;">Audits par auditeur</h3>
+          <div class="pie-donut" style="background:${pieBg}" title="${escapeAttr(pieSlices.map(s=>`${s.name}: ${s.completed}`).join('\n'))}">
             <div class="pie-hole"><span class="pie-total">${totalCompletedAud}</span><span class="pie-total-label">audits</span></div>
           </div>
-          <div class="pie-legend">${pieLegend}</div>
         </div>
         <div style="flex:1;min-width:0;">
           <div class="mini-chart-name" style="font-size:12px;margin-bottom:6px;">Flop 5 — moins d'audits</div>
