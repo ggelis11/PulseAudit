@@ -135,9 +135,13 @@ h1,h2,h3{font-family:var(--font-display);margin:0;letter-spacing:-0.01em;}
 .auditor-bubble:hover{transform:scale(1.06);}
 .ab-initials{font-size:0.9em;opacity:.9;letter-spacing:0.02em;}
 .ab-count{font-size:1.15em;}
-.dash-row-crit-zoom{display:grid;grid-template-columns:2.2fr 1fr;gap:14px;margin-bottom:14px;align-items:start;}
+.ab-zero{color:#fff;}
+.ab-firstname{padding:0 4px;text-align:center;line-height:1.15;word-break:break-word;}
+.dash-row-crit-zoom{display:grid;grid-template-columns:2.2fr 1fr;gap:14px;margin-bottom:14px;align-items:stretch;}
+.dash-row-crit-zoom > div{display:flex;flex-direction:column;}
+.dash-row-crit-zoom > div > .card{flex:1;display:flex;flex-direction:column;}
 @media (max-width:900px){ .dash-row-crit-zoom{grid-template-columns:1fr;} }
-.recent-strip-vert{flex-wrap:wrap;max-height:260px;overflow-y:auto;overflow-x:hidden;}
+.recent-strip-vert{flex:1;flex-wrap:wrap;overflow-y:auto;overflow-x:hidden;align-content:flex-start;}
 .recent-strip-vert .recent-audit-card{width:100%;min-width:0;}
 .dash-kpi-stack{display:flex;flex-direction:column;gap:14px;justify-content:space-between;}
 .kpi-card-sm{padding:22px 20px;}
@@ -681,11 +685,20 @@ async function renderDashboardHTML(){
   const allAuditors = Object.values(stats.perAuditor).sort((a,b)=>b.completed-a.completed);
   const maxAud = Math.max(1, ...allAuditors.map(a=>a.completed));
   const bubbleHtml = allAuditors.map(a=>{
-    const size = Math.round(34 + Math.sqrt(a.completed/maxAud)*72);
     const avg = a.completed ? Math.round(a.scoreSum/a.completed*100) : null;
     const bg = avg===null ? 'var(--ink-faint)' : (avg>=85?'var(--success)':(avg>=60?'var(--warning)':'var(--danger)'));
+    const firstName = a.name.split(/\s+/)[0];
+    const tooltip = `${escapeAttr(a.name)} · ${a.completed} audit${a.completed>1?'s':''}${avg!==null?' · '+avg+'% en moyenne':''}`;
+    if(a.completed===0){
+      const size = 62;
+      const fs = firstName.length>7 ? 10 : 11.5;
+      return `<div class="auditor-bubble ab-zero" style="width:${size}px;height:${size}px;background:${bg};font-size:${fs}px;" title="${tooltip}">
+        <span class="ab-firstname">${escapeHtml(firstName)}</span>
+      </div>`;
+    }
+    const size = Math.round(46 + Math.sqrt(a.completed/maxAud)*72);
     const initials = a.name.split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();
-    return `<div class="auditor-bubble" style="width:${size}px;height:${size}px;background:${bg};font-size:${Math.max(10,Math.round(size*0.24))}px;" title="${escapeAttr(a.name)} · ${a.completed} audit${a.completed>1?'s':''}${avg!==null?' · '+avg+'% en moyenne':''}">
+    return `<div class="auditor-bubble" style="width:${size}px;height:${size}px;background:${bg};font-size:${Math.max(10,Math.round(size*0.24))}px;" title="${tooltip}">
       <span class="ab-initials">${escapeHtml(initials)}</span>
       <span class="ab-count">${a.completed}</span>
     </div>`;
