@@ -746,15 +746,26 @@ async function renderDashboardHTML(){
     </div>`;
   }).join('');
 
-  // 6) zoom sur les 10 derniers jours
+  // 6) zoom sur les 10 derniers jours — basé sur la date réelle du créneau, pas l'horodatage d'enregistrement
+  function rowSlotDate(r){
+    const id = String(r['ID']||'');
+    const weekKey = id.split('|')[0];
+    const dayIdx = DAY_NAMES.indexOf(String(r['Jour']||''));
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(weekKey) || dayIdx<0) return null;
+    const d = new Date(weekKey+'T00:00:00');
+    d.setDate(d.getDate()+dayIdx);
+    return d;
+  }
   const cutoff = Date.now() - 10*86400000;
   const recent = State.auditsRows
-    .filter(r=>r['Statut']==='Réalisé' && r['Audité le'] && new Date(r['Audité le']).getTime()>=cutoff)
-    .sort((a,b)=> new Date(b['Audité le']) - new Date(a['Audité le']));
-  const recentCards = recent.map(r=>{
+    .filter(r=>r['Statut']==='Réalisé')
+    .map(r=>({row:r, slotDate: rowSlotDate(r)}))
+    .filter(x=>x.slotDate && x.slotDate.getTime()>=cutoff)
+    .sort((a,b)=> b.slotDate - a.slotDate);
+  const recentCards = recent.map(({row:r, slotDate})=>{
     const pct = Math.round(Number(r['Score (%)'])||0);
     const cls = pct>=85?'var(--success)':(pct>=60?'var(--warning)':'var(--danger)');
-    const dateLabel = new Date(r['Audité le']).toLocaleDateString('fr-FR',{day:'2-digit',month:'short'});
+    const dateLabel = slotDate.toLocaleDateString('fr-FR',{day:'2-digit',month:'short'});
     return `<div class="recent-audit-card" onclick="viewAuditById('${r['ID']}')">
       <div class="ra-service" title="${escapeAttr(r['Service'])}">${escapeHtml(r['Service'])}</div>
       <div class="ra-score" style="color:${cls}">${pct}%</div>
@@ -785,7 +796,7 @@ async function renderDashboardHTML(){
       <div class="line-legend" style="margin-top:4px;"><span><span class="legend-dot" style="background:var(--primary)"></span>Réalisés</span><span><span class="legend-dot" style="background:var(--warning)"></span>Réservés (S+1/S+2)</span></div>
     </div>
     <div class="dash-col-fill">
-      <div class="card chart-card-sm" style="display:flex;gap:30px;align-items:center;">
+      <div class="card chart-card-sm" style="display:flex;gap:30px;align-items:flex-start;">
         <div style="flex-shrink:0;">
           <h3 style="margin-bottom:10px;font-size:13.5px;font-weight:700;">Audits par auditeur</h3>
           <div class="pie-donut" style="background:${pieBg}" title="${escapeAttr(pieSlices.map(s=>`${s.name}: ${s.completed}`).join('\n'))}">
