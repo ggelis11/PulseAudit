@@ -125,6 +125,14 @@ h1,h2,h3{font-family:var(--font-display);margin:0;letter-spacing:-0.01em;}
 
 .dash-row-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;align-items:start;}
 @media (max-width:800px){ .dash-row-2{grid-template-columns:1fr;} }
+.dash-flop-row{max-width:1300px;}
+.dash-top-grid{display:grid;grid-template-columns:250px 1.7fr 1fr;gap:14px;margin-bottom:14px;align-items:stretch;}
+@media (max-width:900px){ .dash-top-grid{grid-template-columns:1fr;} }
+.dash-kpi-stack{display:flex;flex-direction:column;gap:14px;}
+.kpi-card-sm{padding:16px;flex:1;display:flex;flex-direction:column;justify-content:center;}
+.kpi-card-sm .kpi-value{font-size:26px;margin-top:5px;}
+.dash-chart-audits,.dash-chart-reserv{display:flex;flex-direction:column;}
+.dash-chart-audits svg,.dash-chart-reserv svg{flex:1;margin-top:auto;}
 .chart-card-sm{padding:14px 16px 10px;}
 .chart-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:2px;flex-wrap:wrap;}
 .chart-card-head h3{font-size:13.5px;font-family:var(--font-display);font-weight:700;margin:0;}
@@ -643,11 +651,11 @@ async function renderDashboardHTML(){
     const d = new Date(w.week+'T00:00:00');
     return {label: d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}), value: w.completed};
   });
-  const auditsChart = svgBarChart(weeklyData, State.targetAuditsWeek, {height:140});
+  const auditsChart = svgBarChart(weeklyData, State.targetAuditsWeek, {height:240});
 
   // 2) graphique réservations S+1 / S+2
   const upcoming = computeUpcomingReservations();
-  const reservChart = svgBarChart(upcoming, State.targetReservWeek, {height:140, color:'var(--warning)'});
+  const reservChart = svgBarChart(upcoming, State.targetReservWeek, {height:240, width:180, color:'var(--warning)'});
 
   // 3) flop 5 critères
   const critFlop = computeCriteriaStats(State.dashCritFilter).slice(0,5);
@@ -705,32 +713,31 @@ async function renderDashboardHTML(){
   return `
   <div class="page-head"><h1>Tableau de bord</h1><p>Vue d'ensemble des audits MM, cumul depuis le ${new Date(stats.range[0]+'T00:00:00').toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'})}.</p></div>
 
-  <div class="kpi-grid" style="margin-bottom:14px;">
-    <div class="card kpi-card">
-      <div class="kpi-label">Nombre d'audits (total)</div>
-      <div class="kpi-value" style="color:var(--primary)">${stats.completed}</div>
-      <div class="kpi-sub">audits réalisés sur ${stats.totalSlots} créneaux</div>
+  <div class="dash-top-grid">
+    <div class="dash-kpi-stack">
+      <div class="card kpi-card kpi-card-sm">
+        <div class="kpi-label">Nombre d'audits (total)</div>
+        <div class="kpi-value" style="color:var(--primary)">${stats.completed}</div>
+        <div class="kpi-sub">audits réalisés sur ${stats.totalSlots} créneaux</div>
+      </div>
+      <div class="card kpi-card kpi-card-sm">
+        <div class="kpi-label">Moyenne des notes d'audits</div>
+        <div class="kpi-value" style="color:${avgScoreCls}">${avgScoreGlobal===null?'—':avgScoreGlobal+'%'}</div>
+        <div class="kpi-sub">${stats.completed?`sur ${stats.completed} audit${stats.completed>1?'s':''} réalisé${stats.completed>1?'s':''}`:'aucun audit réalisé pour l\'instant'}</div>
+        ${avgScoreGlobal!==null?`<div class="kpi-bar"><div class="kpi-bar-fill" style="width:${avgScoreGlobal}%;background:${avgScoreCls}"></div></div>`:''}
+      </div>
     </div>
-    <div class="card kpi-card">
-      <div class="kpi-label">Moyenne des notes d'audits</div>
-      <div class="kpi-value" style="color:${avgScoreCls}">${avgScoreGlobal===null?'—':avgScoreGlobal+'%'}</div>
-      <div class="kpi-sub">${stats.completed?`sur ${stats.completed} audit${stats.completed>1?'s':''} réalisé${stats.completed>1?'s':''}`:'aucun audit réalisé pour l\'instant'}</div>
-      ${avgScoreGlobal!==null?`<div class="kpi-bar"><div class="kpi-bar-fill" style="width:${avgScoreGlobal}%;background:${avgScoreCls}"></div></div>`:''}
-    </div>
-  </div>
-
-  <div class="dash-row-2">
-    <div class="card chart-card-sm">
+    <div class="card chart-card-sm dash-chart-audits">
       <div class="chart-card-head"><h3>Audits réalisés / semaine</h3><label class="target-label">Objectif <input type="number" min="0" class="chart-target-input" value="${State.targetAuditsWeek}" onchange="setDashTarget('audits',this.value)"></label></div>
       ${auditsChart}
     </div>
-    <div class="card chart-card-sm">
+    <div class="card chart-card-sm dash-chart-reserv">
       <div class="chart-card-head"><h3>Réservations S+1 / S+2</h3><label class="target-label">Objectif <input type="number" min="0" class="chart-target-input" value="${State.targetReservWeek}" onchange="setDashTarget('reserv',this.value)"></label></div>
       ${reservChart}
     </div>
   </div>
 
-  <div class="dash-row-2">
+  <div class="dash-row-2 dash-flop-row">
     <div>
       <div class="section-title">
         Flop 5 — critères
@@ -1728,12 +1735,12 @@ function svgBarChart(data, target, opts){
     const ty = pad.top + (innerH - (target/maxVal*innerH));
     targetLine = `<line x1="${pad.left}" y1="${ty.toFixed(1)}" x2="${(pad.left+innerW).toFixed(1)}" y2="${ty.toFixed(1)}" stroke="var(--danger)" stroke-width="1.5" stroke-dasharray="4,3"/>`;
   }
-  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:${h}px;display:block;">${bars}${targetLine}</svg>`;
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="width:100%;height:${h}px;display:block;">${bars}${targetLine}</svg>`;
 }
 
 function svgLineChart(seriesList, opts){
   opts = opts || {};
-  const w = opts.width||660, h = opts.height||190;
+  const w = opts.width||1000, h = opts.height||190;
   const pad = {top:10, right:12, bottom:20, left:28};
   const innerW = w-pad.left-pad.right, innerH = h-pad.top-pad.bottom;
   const maxX = Math.max(1, ...seriesList.flatMap(s=>s.points.map(p=>p.x)), 1);
@@ -1749,7 +1756,7 @@ function svgLineChart(seriesList, opts){
     const dots = s.points.map(p=>`<circle cx="${sx(p.x).toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="2.6" fill="${s.color}"/>`).join('');
     return `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2"/>${dots}`;
   }).join('');
-  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:${h}px;display:block;">${grid}${lines}</svg>`;
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMinYMid meet" style="width:100%;height:${h}px;display:block;">${grid}${lines}</svg>`;
 }
 
 /* ============================= INIT ============================= */
