@@ -132,6 +132,13 @@ h1,h2,h3{font-family:var(--font-display);margin:0;letter-spacing:-0.01em;}
 .bubble-card{padding:12px;display:flex;align-items:center;}
 .bubble-field{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px;width:100%;}
 .auditor-bubble{border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-family:var(--font-mono);font-weight:700;line-height:1.1;cursor:default;flex-shrink:0;transition:transform .12s;}
+.pie-wrap{flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:8px;}
+.pie-donut{position:relative;width:118px;height:118px;border-radius:50%;flex-shrink:0;}
+.pie-hole{position:absolute;inset:26%;background:var(--surface);border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.pie-total{font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--ink);line-height:1;}
+.pie-total-label{font-size:9px;color:var(--ink-faint);margin-top:1px;}
+.pie-legend{display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--ink-soft);max-width:118px;max-height:70px;overflow-y:auto;}
+.pie-legend span{display:flex;align-items:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .auditor-bubble:hover{transform:scale(1.06);}
 .ab-initials{font-size:0.9em;opacity:.9;letter-spacing:0.02em;}
 .ab-count{font-size:1.15em;}
@@ -140,6 +147,7 @@ h1,h2,h3{font-family:var(--font-display);margin:0;letter-spacing:-0.01em;}
 .dash-row-crit-zoom{display:grid;grid-template-columns:2.2fr 1fr;gap:14px;margin-bottom:14px;align-items:start;}
 .dash-row-crit-zoom > div{display:flex;flex-direction:column;}
 .dash-row-crit-zoom > div > .card{height:210px;display:flex;flex-direction:column;overflow:hidden;}
+.dash-row-crit-zoom .section-title{min-height:34px;align-items:center;}
 @media (max-width:900px){ .dash-row-crit-zoom{grid-template-columns:1fr;} }
 .recent-strip-vert{flex:1;flex-wrap:wrap;overflow-y:auto;overflow-x:hidden;align-content:flex-start;min-height:0;}
 .recent-strip-vert .recent-audit-card{width:100%;min-width:0;}
@@ -687,28 +695,33 @@ async function renderDashboardHTML(){
     </div>`;
   }).join('');
 
-  // 4) audits par auditeur — visuel en bulles (taille = nb d'audits, couleur = note moyenne)
+  // 4) audits par auditeur — camembert + Flop 5
   const allAuditors = Object.values(stats.perAuditor).sort((a,b)=>b.completed-a.completed);
   const maxAud = Math.max(1, ...allAuditors.map(a=>a.completed));
-  const bubbleHtml = allAuditors.map(a=>{
-    const avg = a.completed ? Math.round(a.scoreSum/a.completed*100) : null;
-    const bg = avg===null ? 'var(--ink-faint)' : (avg>=85?'var(--success)':(avg>=60?'var(--warning)':'var(--danger)'));
-    const firstName = a.name.split(/\s+/)[0];
-    const tooltip = `${escapeAttr(a.name)} · ${a.completed} audit${a.completed>1?'s':''}${avg!==null?' · '+avg+'% en moyenne':''}`;
-    if(a.completed===0){
-      const size = 62;
-      const fs = firstName.length>7 ? 10 : 11.5;
-      return `<div class="auditor-bubble ab-zero" style="width:${size}px;height:${size}px;background:${bg};font-size:${fs}px;" title="${tooltip}">
-        <span class="ab-firstname">${escapeHtml(firstName)}</span>
-      </div>`;
-    }
-    const size = Math.round(46 + Math.sqrt(a.completed/maxAud)*72);
-    const initials = a.name.split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();
-    return `<div class="auditor-bubble" style="width:${size}px;height:${size}px;background:${bg};font-size:${Math.max(10,Math.round(size*0.24))}px;" title="${tooltip}">
-      <span class="ab-initials">${escapeHtml(initials)}</span>
-      <span class="ab-count">${a.completed}</span>
+  const pieAuditors = allAuditors.filter(a=>a.completed>0);
+  const totalCompletedAud = pieAuditors.reduce((s,a)=>s+a.completed,0);
+  let cum = 0;
+  const pieSlices = pieAuditors.map((a,i)=>{
+    const start = totalCompletedAud ? cum/totalCompletedAud*100 : 0;
+    cum += a.completed;
+    const end = totalCompletedAud ? cum/totalCompletedAud*100 : 0;
+    const color = SERVICE_COLORS[i % SERVICE_COLORS.length];
+    return {name:a.name, completed:a.completed, color, start, end};
+  });
+  const pieBg = pieSlices.length
+    ? `conic-gradient(${pieSlices.map(s=>`${s.color} ${s.start.toFixed(2)}% ${s.end.toFixed(2)}%`).join(', ')})`
+    : 'var(--surface-alt)';
+  const pieLegend = pieSlices.map(s=>`<span title="${escapeAttr(s.name)} · ${s.completed}"><span class="legend-dot" style="background:${s.color}"></span>${escapeHtml(s.name.length>12?s.name.slice(0,11)+'…':s.name)}</span>`).join('');
+
+  const audFlop = allAuditors.slice().sort((a,b)=>a.completed-b.completed).slice(0,5);
+  const audFlopHtml = audFlop.map(a=>{
+    const pct = Math.max(a.completed/maxAud*100, a.completed>0?4:2);
+    return `<div class="hbar-row" title="${escapeAttr(a.name)}">
+      <div class="hbar-label">${escapeHtml(a.name)}</div>
+      <div class="hbar-track"><div class="hbar-fill" style="width:${pct}%;background:${a.completed===0?'var(--danger)':'var(--primary)'}"></div></div>
+      <div class="hbar-value" style="color:var(--ink-soft)">${a.completed}</div>
     </div>`;
-  }).join('');
+  }).join('') || '<p style="color:var(--ink-faint);padding:10px 6px;font-size:13px;">Pas encore de données.</p>';
 
   // 5) évolution des notes par service — petits graphiques individuels
   const serviceSeries = State.services.map(s=>{
@@ -772,8 +785,17 @@ async function renderDashboardHTML(){
     </div>
     <div>
       <div class="section-title" style="margin-top:0;">Audits par auditeur</div>
-      <div class="card bubble-card">
-        <div class="bubble-field">${bubbleHtml || '<p style="color:var(--ink-faint);padding:10px 6px;font-size:13px;">Pas encore de données.</p>'}</div>
+      <div class="card chart-card-sm" style="display:flex;gap:18px;align-items:center;">
+        <div class="pie-wrap">
+          <div class="pie-donut" style="background:${pieBg}">
+            <div class="pie-hole"><span class="pie-total">${totalCompletedAud}</span><span class="pie-total-label">audits</span></div>
+          </div>
+          <div class="pie-legend">${pieLegend}</div>
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div class="mini-chart-name" style="font-size:12px;margin-bottom:6px;">Flop 5 — moins d'audits</div>
+          <div class="hbar-list">${audFlopHtml}</div>
+        </div>
       </div>
     </div>
   </div>
