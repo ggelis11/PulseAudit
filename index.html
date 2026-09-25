@@ -153,6 +153,12 @@ h1,h2,h3{font-family:var(--font-display);margin:0;letter-spacing:-0.01em;}
 .target-label{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-faint);font-weight:600;}
 .chart-target-input{width:44px;padding:3px 5px;border:1px solid var(--line);border-radius:6px;font-size:12px;font-family:var(--font-mono);text-align:center;}
 .line-legend{display:flex;flex-wrap:wrap;gap:7px 14px;margin-top:6px;font-size:11.5px;color:var(--ink-soft);}
+.mini-chart-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;}
+.mini-chart-card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px 8px;box-shadow:var(--shadow-card);}
+.mini-chart-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:2px;}
+.mini-chart-name{font-size:12px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.mini-chart-score{font-family:var(--font-mono);font-size:13px;font-weight:700;flex-shrink:0;}
+.mini-chart-sub{font-size:10px;color:var(--ink-faint);margin-top:3px;text-align:right;}
 .recent-strip{display:flex;gap:10px;overflow-x:auto;padding:4px 2px 6px;}
 .recent-audit-card{min-width:106px;flex-shrink:0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;cursor:pointer;text-align:center;transition:transform .12s,box-shadow .12s;background:var(--surface);}
 .recent-audit-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-card);}
@@ -704,7 +710,7 @@ async function renderDashboardHTML(){
     </div>`;
   }).join('');
 
-  // 5) évolution des notes par service
+  // 5) évolution des notes par service — petits graphiques individuels
   const serviceSeries = State.services.map(s=>{
     const pts = State.auditsRows
       .filter(r=>r['Service']===s && r['Statut']==='Réalisé')
@@ -712,10 +718,19 @@ async function renderDashboardHTML(){
       .map((r,i)=>({x:i+1, y:Number(r['Score (%)'])||0}));
     return {name:s, color:serviceColor(s), points:pts};
   }).filter(s=>s.points.length>0);
-  const lineChart = serviceSeries.length
-    ? svgLineChart(serviceSeries, {height:190})
-    : `<p style="color:var(--ink-faint);padding:10px 6px;font-size:13px;">Aucun audit réalisé pour l'instant.</p>`;
-  const lineLegend = serviceSeries.map(s=>`<span><span class="legend-dot" style="background:${s.color}"></span>${escapeHtml(s.name)}</span>`).join('');
+  const miniCharts = serviceSeries.map(s=>{
+    const last = s.points[s.points.length-1].y;
+    const cls = last>=85?'var(--success)':(last>=60?'var(--warning)':'var(--danger)');
+    const chart = svgLineChart([{name:s.name, color:s.color, points:s.points}], {width:220, height:84, showLabels:false});
+    return `<div class="mini-chart-card">
+      <div class="mini-chart-head">
+        <span class="mini-chart-name" title="${escapeAttr(s.name)}">${escapeHtml(s.name)}</span>
+        <span class="mini-chart-score" style="color:${cls}">${last}%</span>
+      </div>
+      ${chart}
+      <div class="mini-chart-sub">${s.points.length} audit${s.points.length>1?'s':''}</div>
+    </div>`;
+  }).join('');
 
   // 6) zoom sur les 10 derniers jours
   const cutoff = Date.now() - 10*86400000;
@@ -785,9 +800,8 @@ async function renderDashboardHTML(){
   </div>
 
   <div class="section-title">Évolution des notes par service</div>
-  <div class="card chart-card-sm" style="margin-bottom:14px;">
-    ${lineChart}
-    <div class="line-legend">${lineLegend}</div>
+  <div class="mini-chart-grid" style="margin-bottom:14px;">
+    ${miniCharts || '<p style="color:var(--ink-faint);padding:10px 6px;font-size:13px;">Aucun audit réalisé pour l\'instant.</p>'}
   </div>
   `;
 }
@@ -1763,22 +1777,25 @@ function svgBarChart(data, target, opts){
 function svgLineChart(seriesList, opts){
   opts = opts || {};
   const w = opts.width||1000, h = opts.height||190;
-  const pad = {top:10, right:12, bottom:20, left:28};
+  const showLabels = opts.showLabels!==false;
+  const pad = showLabels ? {top:10, right:12, bottom:20, left:28} : {top:8, right:6, bottom:6, left:6};
   const innerW = w-pad.left-pad.right, innerH = h-pad.top-pad.bottom;
   const maxX = Math.max(1, ...seriesList.flatMap(s=>s.points.map(p=>p.x)), 1);
   const sx = x => pad.left + (maxX<=1 ? innerW/2 : (x-1)/(maxX-1)*innerW);
   const sy = y => pad.top + innerH - (y/100*innerH);
   const grid = [0,50,100].map(v=>{
     const y = sy(v);
-    return `<line x1="${pad.left}" y1="${y.toFixed(1)}" x2="${(pad.left+innerW).toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--line-soft)" stroke-width="1"/><text x="${pad.left-6}" y="${(y+3).toFixed(1)}" font-size="9" text-anchor="end" fill="var(--ink-faint)">${v}</text>`;
+    const label = showLabels ? `<text x="${pad.left-6}" y="${(y+3).toFixed(1)}" font-size="9" text-anchor="end" fill="var(--ink-faint)">${v}</text>` : '';
+    return `<line x1="${pad.left}" y1="${y.toFixed(1)}" x2="${(pad.left+innerW).toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--line-soft)" stroke-width="1"/>${label}`;
   }).join('');
   const lines = seriesList.map(s=>{
     if(!s.points.length) return '';
     const d = s.points.map((p,i)=>`${i===0?'M':'L'}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(' ');
-    const dots = s.points.map(p=>`<circle cx="${sx(p.x).toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="2.6" fill="${s.color}"/>`).join('');
+    const dots = s.points.map(p=>`<circle cx="${sx(p.x).toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="${showLabels?2.6:3.2}" fill="${s.color}"/>`).join('');
     return `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2"/>${dots}`;
   }).join('');
-  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMinYMid meet" style="width:100%;height:${h}px;display:block;">${grid}${lines}</svg>`;
+  const par = showLabels ? 'xMinYMid meet' : 'none';
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="${par}" style="width:100%;height:${h}px;display:block;">${grid}${lines}</svg>`;
 }
 
 /* ============================= INIT ============================= */
