@@ -40,7 +40,8 @@ button{font-family:inherit;cursor:pointer;}
 input,select,textarea{font-family:inherit;}
 ::selection{background:var(--primary-soft);}
 
-.shell{max-width:1180px;margin:0 auto;padding:0 20px 64px;}
+.shell{max-width:1180px;margin:0 auto;padding:0 20px 64px;transition:max-width .15s;}
+.shell.shell-wide{max-width:2000px;}
 .topbar{position:sticky;top:0;z-index:20;background:rgba(242,244,249,0.88);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);}
 .topbar-inner{max-width:1180px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;gap:22px;flex-wrap:wrap;}
 .brand{display:flex;align-items:center;gap:10px;margin-right:auto;}
@@ -446,6 +447,7 @@ const State = {
   view: 'planning',
   services: [],   // array of names
   serviceMeta: {}, // { [name]: {active, row} }
+  auditorRows: {}, // { [name]: row }
   auditors: [],   // array of auditor names
   criteria: [],   // array of labels (ordered)
   templates: [],  // {id, day, time, service, label}
@@ -493,6 +495,8 @@ async function loadAllData(){
     .sort((a,b)=> (Number(a['Ordre'])||0) - (Number(b['Ordre'])||0))
     .map(r=>({ label: String(r['Critère']), category: String(r['Catégorie']||'').trim(), row: r['_row'] }));
   State.auditors = auditeurs.map(r=>r["Nom de l'auditeur"]).filter(Boolean);
+  State.auditorRows = {};
+  auditeurs.forEach(r=>{ const n=r["Nom de l'auditeur"]; if(n) State.auditorRows[n]=r['_row']; });
   State.auditsRows = data.Audits_MM || [];
   State.auditDetailRows = data.Audits_Detail || [];
   State.holidays = (data.Jours_Feries || [])
@@ -553,6 +557,7 @@ window.goTo = goTo;
 async function renderUI(){
   renderTabs();
   const app = document.getElementById('app');
+  app.classList.toggle('shell-wide', State.view==='dashboard');
   if(State.view==='dashboard'){ app.innerHTML = await renderDashboardHTML(); }
   else if(State.view==='planning'){ app.innerHTML = renderPlanningHTML(); }
   else if(State.view==='audit'){ app.innerHTML = renderAuditHTML(); }
@@ -1310,7 +1315,12 @@ function renderConfigHTML(){
     : '<p class="hint">Aucun service pour l\'instant.</p>';
 
   const audHtml = State.auditors.length
-    ? `<div class="cfg-list">${State.auditors.map(a=>`<span class="cfg-chip">${escapeHtml(a)}</span>`).join('')}</div>`
+    ? State.auditors.map(a=>`<div class="cfg-line">
+        <span>${escapeHtml(a)}</span>
+        <span class="cfg-line-actions">
+          <button class="icon-btn danger" onclick="deleteAuditorRow('${escapeAttr(a)}')" title="Supprimer">${trashIcon()}</button>
+        </span>
+      </div>`).join('')
     : '<p class="hint">Aucun auditeur pour l\'instant.</p>';
 
   const tplHtml = State.templates.length
@@ -1621,6 +1631,7 @@ async function addAuditorFromApp(){
   const res = await apiAppend('Auditeurs', {"Nom de l'auditeur": name});
   if(res){
     State.auditors.push(name);
+    State.auditorRows[name] = res.row;
     input.value = '';
     renderUI();
   } else {
@@ -1629,6 +1640,19 @@ async function addAuditorFromApp(){
   }
 }
 window.addAuditorFromApp = addAuditorFromApp;
+
+async function deleteAuditorRow(name){
+  const row = State.auditorRows[name];
+  if(!row){ alert("Impossible de localiser cet auditeur dans le Sheet — cliquez sur Rafraîchir puis réessayez."); return; }
+  if(!confirm(`Supprimer "${name}" de la liste des auditeurs ?`)) return;
+  const ok = await apiDeleteRow('Auditeurs', row);
+  if(!ok){ alert("Échec de la suppression — vérifiez la connexion au Google Sheet."); return; }
+  State.auditors = State.auditors.filter(a=>a!==name);
+  delete State.auditorRows[name];
+  Object.keys(State.auditorRows).forEach(n=>{ if(State.auditorRows[n]>row) State.auditorRows[n] -= 1; });
+  renderUI();
+}
+window.deleteAuditorRow = deleteAuditorRow;
 
 async function addTemplateFromApp(){
   const day = document.getElementById('new-tpl-day').value;
