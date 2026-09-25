@@ -126,17 +126,17 @@ h1,h2,h3{font-family:var(--font-display);margin:0;letter-spacing:-0.01em;}
 .dash-row-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;align-items:start;}
 @media (max-width:800px){ .dash-row-2{grid-template-columns:1fr;} }
 .dash-flop-row{max-width:1300px;}
-.dash-top-grid{display:grid;grid-template-columns:250px 420px 230px 1fr;gap:14px;margin-bottom:14px;align-items:start;}
+.dash-top-grid{display:grid;grid-template-columns:250px 420px 230px 1fr;gap:14px;margin-bottom:14px;align-items:stretch;}
 @media (max-width:1300px){ .dash-top-grid{grid-template-columns:1fr 1fr;} }
 @media (max-width:700px){ .dash-top-grid{grid-template-columns:1fr;} }
 .dash-row-crit-zoom{display:grid;grid-template-columns:2.2fr 1fr;gap:14px;margin-bottom:14px;align-items:start;}
 @media (max-width:900px){ .dash-row-crit-zoom{grid-template-columns:1fr;} }
 .recent-strip-vert{flex-wrap:wrap;max-height:260px;overflow-y:auto;overflow-x:hidden;}
 .recent-strip-vert .recent-audit-card{width:100%;min-width:0;}
-.dash-kpi-stack{display:flex;flex-direction:column;gap:14px;}
+.dash-kpi-stack{display:flex;flex-direction:column;gap:14px;justify-content:space-between;}
 .kpi-card-sm{padding:16px;}
 .kpi-card-sm .kpi-value{font-size:26px;margin-top:5px;}
-.dash-chart-audits,.dash-chart-reserv{display:flex;flex-direction:column;}
+.dash-chart-audits,.dash-chart-reserv{display:flex;flex-direction:column;justify-content:space-between;}
 .chart-card-sm{padding:14px 16px 10px;}
 .chart-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:2px;flex-wrap:wrap;}
 .chart-card-head h3{font-size:13.5px;font-family:var(--font-display);font-weight:700;margin:0;}
@@ -655,7 +655,7 @@ async function renderDashboardHTML(){
     const d = new Date(w.week+'T00:00:00');
     return {label: d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}), value: w.completed};
   });
-  const auditsChart = svgBarChart(weeklyData, State.targetAuditsWeek, {height:180});
+  const auditsChart = svgBarChart(weeklyData, State.targetAuditsWeek, {width:388, height:172, labelSize:12, bottomPad:22});
 
   // 2) graphique réservations S+1 / S+2
   const upcoming = computeUpcomingReservations();
@@ -1721,7 +1721,8 @@ function escapeHtml(s){ return String(s??'').replace(/[&<>"']/g, m=>({'&':'&amp;
 function svgBarChart(data, target, opts){
   opts = opts || {};
   const w = opts.width || Math.max(260, data.length*72), h = opts.height || 140;
-  const pad = {top:16, right:8, bottom:24, left:8};
+  const labelSize = opts.labelSize || 9.5;
+  const pad = {top:16, right:8, bottom: opts.bottomPad || 24, left:8};
   const innerW = w-pad.left-pad.right, innerH = h-pad.top-pad.bottom;
   const barColor = opts.color || 'var(--primary)';
   const maxVal = Math.max(target||0, ...data.map(d=>d.value), 1) * 1.15;
@@ -1732,8 +1733,8 @@ function svgBarChart(data, target, opts){
     const x = pad.left + i*bw + (bw-bwReal)/2;
     const y = pad.top + (innerH-bh);
     return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bwReal.toFixed(1)}" height="${Math.max(bh,1).toFixed(1)}" rx="3" fill="${barColor}"/>
-      <text x="${(x+bwReal/2).toFixed(1)}" y="${(y-5).toFixed(1)}" font-size="11" font-weight="700" text-anchor="middle" fill="var(--ink)" font-family="'IBM Plex Mono',monospace">${d.value}</text>
-      <text x="${(x+bwReal/2).toFixed(1)}" y="${(pad.top+innerH+15).toFixed(1)}" font-size="9.5" text-anchor="middle" fill="var(--ink-faint)">${escapeHtml(d.label)}</text>`;
+      <text x="${(x+bwReal/2).toFixed(1)}" y="${(y-5).toFixed(1)}" font-size="12" font-weight="700" text-anchor="middle" fill="var(--ink)" font-family="'IBM Plex Mono',monospace">${d.value}</text>
+      <text x="${(x+bwReal/2).toFixed(1)}" y="${(h-6).toFixed(1)}" font-size="${labelSize}" font-weight="600" text-anchor="middle" fill="var(--ink-soft)">${escapeHtml(d.label)}</text>`;
   }).join('');
   let targetLine = '';
   if(target){
