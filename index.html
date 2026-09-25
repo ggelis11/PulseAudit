@@ -126,8 +126,13 @@ h1,h2,h3{font-family:var(--font-display);margin:0;letter-spacing:-0.01em;}
 .dash-row-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;align-items:start;}
 @media (max-width:800px){ .dash-row-2{grid-template-columns:1fr;} }
 .dash-flop-row{max-width:1300px;}
-.dash-top-grid{display:grid;grid-template-columns:250px 1.7fr 1fr;gap:14px;margin-bottom:14px;align-items:start;}
-@media (max-width:900px){ .dash-top-grid{grid-template-columns:1fr;} }
+.dash-top-grid{display:grid;grid-template-columns:250px 420px 230px 1fr;gap:14px;margin-bottom:14px;align-items:start;}
+@media (max-width:1300px){ .dash-top-grid{grid-template-columns:1fr 1fr;} }
+@media (max-width:700px){ .dash-top-grid{grid-template-columns:1fr;} }
+.dash-row-crit-zoom{display:grid;grid-template-columns:2.2fr 1fr;gap:14px;margin-bottom:14px;align-items:start;}
+@media (max-width:900px){ .dash-row-crit-zoom{grid-template-columns:1fr;} }
+.recent-strip-vert{flex-wrap:wrap;max-height:260px;overflow-y:auto;overflow-x:hidden;}
+.recent-strip-vert .recent-audit-card{width:100%;min-width:0;}
 .dash-kpi-stack{display:flex;flex-direction:column;gap:14px;}
 .kpi-card-sm{padding:16px;}
 .kpi-card-sm .kpi-value{font-size:26px;margin-top:5px;}
@@ -734,9 +739,15 @@ async function renderDashboardHTML(){
       <div class="chart-card-head"><h3>Réservations S+1 / S+2</h3><label class="target-label">Objectif <input type="number" min="0" class="chart-target-input" value="${State.targetReservWeek}" onchange="setDashTarget('reserv',this.value)"></label></div>
       ${reservChart}
     </div>
+    <div>
+      <div class="section-title" style="margin-top:0;">Flop 5 — audits par auditeur</div>
+      <div class="card" style="padding:6px 8px;">
+        <div class="hbar-list">${audBars || '<p style="color:var(--ink-faint);padding:10px 6px;font-size:13px;">Pas encore de données.</p>'}</div>
+      </div>
+    </div>
   </div>
 
-  <div class="dash-row-2 dash-flop-row">
+  <div class="dash-row-crit-zoom">
     <div>
       <div class="section-title">
         Flop 5 — critères
@@ -750,9 +761,9 @@ async function renderDashboardHTML(){
       </div>
     </div>
     <div>
-      <div class="section-title">Flop 5 — audits réalisés par auditeur</div>
-      <div class="card" style="padding:6px 8px;">
-        <div class="hbar-list">${audBars || '<p style="color:var(--ink-faint);padding:10px 6px;font-size:13px;">Pas encore de données.</p>'}</div>
+      <div class="section-title">Zoom derniers audits <span style="font-weight:400;color:var(--ink-faint);font-size:12px;">(10j)</span></div>
+      <div class="card" style="padding:10px 8px;">
+        <div class="recent-strip recent-strip-vert">${recentCards || '<p style="color:var(--ink-faint);padding:10px 6px;font-size:13px;">Aucun audit réalisé ces 10 derniers jours.</p>'}</div>
       </div>
     </div>
   </div>
@@ -761,11 +772,6 @@ async function renderDashboardHTML(){
   <div class="card chart-card-sm" style="margin-bottom:14px;">
     ${lineChart}
     <div class="line-legend">${lineLegend}</div>
-  </div>
-
-  <div class="section-title">Zoom sur les derniers audits <span style="font-weight:400;color:var(--ink-faint);font-size:12px;">(10 derniers jours)</span></div>
-  <div class="card" style="padding:10px 8px;">
-    <div class="recent-strip">${recentCards || '<p style="color:var(--ink-faint);padding:10px 6px;font-size:13px;">Aucun audit réalisé ces 10 derniers jours.</p>'}</div>
   </div>
   `;
 }
