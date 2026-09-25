@@ -122,6 +122,21 @@ h1,h2,h3{font-family:var(--font-display);margin:0;letter-spacing:-0.01em;}
 .hbar-value{flex:0 0 40px;text-align:right;font-family:var(--font-mono);font-size:12px;font-weight:600;}
 @media (max-width:640px){ .hbar-label{flex-basis:34%;font-size:11.5px;} }
 
+.dash-row-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;align-items:start;}
+@media (max-width:800px){ .dash-row-2{grid-template-columns:1fr;} }
+.chart-card-sm{padding:14px 16px 10px;}
+.chart-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:2px;flex-wrap:wrap;}
+.chart-card-head h3{font-size:13.5px;font-family:var(--font-display);font-weight:700;margin:0;}
+.target-label{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-faint);font-weight:600;}
+.chart-target-input{width:44px;padding:3px 5px;border:1px solid var(--line);border-radius:6px;font-size:12px;font-family:var(--font-mono);text-align:center;}
+.line-legend{display:flex;flex-wrap:wrap;gap:7px 14px;margin-top:6px;font-size:11.5px;color:var(--ink-soft);}
+.recent-strip{display:flex;gap:10px;overflow-x:auto;padding:4px 2px 6px;}
+.recent-audit-card{min-width:106px;flex-shrink:0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;cursor:pointer;text-align:center;transition:transform .12s,box-shadow .12s;background:var(--surface);}
+.recent-audit-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-card);}
+.ra-service{font-size:10.5px;color:var(--ink-soft);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ra-score{font-family:var(--font-mono);font-size:19px;font-weight:700;margin:3px 0;}
+.ra-date{font-size:9.5px;color:var(--ink-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
 .week-nav{display:flex;align-items:center;gap:10px;margin-bottom:22px;}
 .week-nav .btn-ghost{padding:8px 10px;}
 .week-label{font-family:var(--font-mono);font-size:13.5px;font-weight:600;color:var(--ink);background:var(--surface);border:1px solid var(--line);padding:8px 14px;border-radius:9px;flex:1;text-align:center;}
@@ -442,6 +457,8 @@ const State = {
   holidays: [], // [{date, label, row}]
   auditDetailRows: [], // cache brut de l'onglet Audits_Detail
   dashCritFilter: '',
+  targetAuditsWeek: 4,
+  targetReservWeek: 4,
   auditCtx: null,
   loaded: false,
 };
@@ -616,38 +633,20 @@ async function renderDashboardHTML(){
   const avgScoreGlobal = stats.completed ? Math.round(stats.scoreSum/stats.completed*100) : null;
   const avgScoreCls = avgScoreGlobal===null ? 'var(--ink-faint)' : (avgScoreGlobal>=85?'var(--success)':(avgScoreGlobal>=60?'var(--warning)':'var(--danger)'));
 
-  const chartCols = stats.perWeek.map(w=>{
-    const rPct = w.total? Math.round(w.reserved/w.total*100):0;
-    const cPct = w.total? Math.round(w.completed/w.total*100):0;
+  // 2) graphique audits/semaine
+  const weeklyData = stats.perWeek.map(w=>{
     const d = new Date(w.week+'T00:00:00');
-    const lbl = d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'});
-    return `<div class="chart-col">
-      <div class="chart-bars">
-        <div class="chart-bar reserved" style="height:${Math.max(rPct,2)}%" title="Réservé ${rPct}%"></div>
-        <div class="chart-bar completed" style="height:${Math.max(cPct,2)}%" title="Réalisé ${cPct}%"></div>
-      </div>
-      <div class="chart-label">${lbl}</div>
-    </div>`;
-  }).join('');
+    return {label: d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}), value: w.completed};
+  });
+  const auditsChart = svgBarChart(weeklyData, State.targetAuditsWeek, {height:140});
 
-  const svcRows = Object.values(stats.perService).map(s=>{
-    const avg = s.completed? Math.round(s.scoreSum/s.completed*100):null;
-    const avgCls = avg===null?'var(--ink-faint)':(avg>=85?'var(--success)':(avg>=60?'var(--warning)':'var(--danger)'));
-    const avgLabel = avg===null?'—':avg+'%';
-    const joker = s.name==='BT - Dessinateurs' ? ' <span title="Joker">🃏</span>' : '';
-    return `<tr class="svc-row-clickable" onclick="openServiceAuditsModal('${escapeAttr(s.name)}')"><td>${escapeHtml(s.name)}${joker}</td><td class="num" style="color:${avgCls};font-weight:600;">${avgLabel}</td><td class="num">${s.completed}/${s.total}</td></tr>`;
-  }).join('');
+  // 2) graphique réservations S+1 / S+2
+  const upcoming = computeUpcomingReservations();
+  const reservChart = svgBarChart(upcoming, State.targetReservWeek, {height:140, color:'var(--warning)'});
 
-  const audRows = Object.values(stats.perAuditor)
-    .sort((a,b)=> b.completed - a.completed)
-    .map(a=>{
-      const avg = a.completed? Math.round(a.scoreSum/a.completed*100):null;
-      const avgCls = avg===null?'var(--ink-faint)':(avg>=85?'var(--success)':(avg>=60?'var(--warning)':'var(--danger)'));
-      const avgLabel = avg===null?'—':avg+'%';
-      return `<tr><td>${escapeHtml(a.name)}</td><td class="num">${a.completed}</td><td class="num" style="color:${avgCls};font-weight:600;">${avgLabel}</td></tr>`;
-    }).join('');
-
-  const critBars = computeCriteriaStats(State.dashCritFilter).map(c=>{
+  // 3) flop 5 critères
+  const critFlop = computeCriteriaStats(State.dashCritFilter).slice(0,5);
+  const critBars = critFlop.map(c=>{
     const pct = c.avg===null?0:c.avg;
     const color = c.avg===null?'var(--ink-faint)':(c.avg>=85?'var(--success)':(c.avg>=60?'var(--warning)':'var(--danger)'));
     return `<div class="hbar-row" title="${escapeAttr(c.label)}">
@@ -657,15 +656,51 @@ async function renderDashboardHTML(){
     </div>`;
   }).join('');
 
+  // 4) flop 5 auditeurs (par nombre d'audits réalisés)
+  const audFlop = Object.values(stats.perAuditor).sort((a,b)=>a.completed-b.completed).slice(0,5);
+  const maxAud = Math.max(1, ...Object.values(stats.perAuditor).map(a=>a.completed));
+  const audBars = audFlop.map(a=>{
+    const pct = Math.max(a.completed/maxAud*100, a.completed>0?4:0);
+    return `<div class="hbar-row" title="${escapeAttr(a.name)}">
+      <div class="hbar-label">${escapeHtml(a.name)}</div>
+      <div class="hbar-track"><div class="hbar-fill" style="width:${pct}%;background:${a.completed===0?'var(--danger)':'var(--primary)'}"></div></div>
+      <div class="hbar-value" style="color:var(--ink-soft)">${a.completed}</div>
+    </div>`;
+  }).join('');
+
+  // 5) évolution des notes par service
+  const serviceSeries = State.services.map(s=>{
+    const pts = State.auditsRows
+      .filter(r=>r['Service']===s && r['Statut']==='Réalisé')
+      .sort((a,b)=> new Date(a['Audité le']||0) - new Date(b['Audité le']||0))
+      .map((r,i)=>({x:i+1, y:Number(r['Score (%)'])||0}));
+    return {name:s, color:serviceColor(s), points:pts};
+  }).filter(s=>s.points.length>0);
+  const lineChart = serviceSeries.length
+    ? svgLineChart(serviceSeries, {height:190})
+    : `<p style="color:var(--ink-faint);padding:10px 6px;font-size:13px;">Aucun audit réalisé pour l'instant.</p>`;
+  const lineLegend = serviceSeries.map(s=>`<span><span class="legend-dot" style="background:${s.color}"></span>${escapeHtml(s.name)}</span>`).join('');
+
+  // 6) zoom sur les 10 derniers jours
+  const cutoff = Date.now() - 10*86400000;
+  const recent = State.auditsRows
+    .filter(r=>r['Statut']==='Réalisé' && r['Audité le'] && new Date(r['Audité le']).getTime()>=cutoff)
+    .sort((a,b)=> new Date(b['Audité le']) - new Date(a['Audité le']));
+  const recentCards = recent.map(r=>{
+    const pct = Math.round(Number(r['Score (%)'])||0);
+    const cls = pct>=85?'var(--success)':(pct>=60?'var(--warning)':'var(--danger)');
+    const dateLabel = new Date(r['Audité le']).toLocaleDateString('fr-FR',{day:'2-digit',month:'short'});
+    return `<div class="recent-audit-card" onclick="viewAuditById('${r['ID']}')">
+      <div class="ra-service" title="${escapeAttr(r['Service'])}">${escapeHtml(r['Service'])}</div>
+      <div class="ra-score" style="color:${cls}">${pct}%</div>
+      <div class="ra-date">${dateLabel} · ${escapeHtml(r['Auditeur']||'')}</div>
+    </div>`;
+  }).join('');
+
   return `
   <div class="page-head"><h1>Tableau de bord</h1><p>Vue d'ensemble des audits MM, cumul depuis le ${new Date(stats.range[0]+'T00:00:00').toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'})}.</p></div>
 
-  <div class="kpi-grid">
-    <div class="card kpi-card">
-      <div class="kpi-label">Nombre de réservations</div>
-      <div class="kpi-value" style="color:var(--warning)">${stats.reserved}</div>
-      <div class="kpi-sub">créneaux réservés sur ${stats.totalSlots}</div>
-    </div>
+  <div class="kpi-grid" style="margin-bottom:14px;">
     <div class="card kpi-card">
       <div class="kpi-label">Nombre d'audits (total)</div>
       <div class="kpi-value" style="color:var(--primary)">${stats.completed}</div>
@@ -679,44 +714,72 @@ async function renderDashboardHTML(){
     </div>
   </div>
 
-  <div class="card chart-card">
-    <h3 style="font-size:14.5px;margin-bottom:2px;">Évolution hebdomadaire</h3>
-    <div class="chart-row">${chartCols || '<div class="empty-note">Pas encore de données.</div>'}</div>
-    <div class="chart-legend">
-      <span><span class="legend-dot" style="background:var(--warning)"></span>Réservé</span>
-      <span><span class="legend-dot" style="background:var(--primary)"></span>Réalisé</span>
+  <div class="dash-row-2">
+    <div class="card chart-card-sm">
+      <div class="chart-card-head"><h3>Audits réalisés / semaine</h3><label class="target-label">Objectif <input type="number" min="0" class="chart-target-input" value="${State.targetAuditsWeek}" onchange="setDashTarget('audits',this.value)"></label></div>
+      ${auditsChart}
+    </div>
+    <div class="card chart-card-sm">
+      <div class="chart-card-head"><h3>Réservations S+1 / S+2</h3><label class="target-label">Objectif <input type="number" min="0" class="chart-target-input" value="${State.targetReservWeek}" onchange="setDashTarget('reserv',this.value)"></label></div>
+      ${reservChart}
     </div>
   </div>
 
-  <div class="section-title">Par service</div>
-  <div class="card" style="padding:6px 8px;">
-    <table class="svc-table">
-      <thead><tr><th>Service</th><th>Moyenne</th><th>Audits</th></tr></thead>
-      <tbody>${svcRows || '<tr><td colspan="3" style="color:var(--ink-faint);padding:16px;">Aucun service configuré.</td></tr>'}</tbody>
-    </table>
+  <div class="dash-row-2">
+    <div>
+      <div class="section-title">
+        Flop 5 — critères
+        <select onchange="setDashCritFilter(this.value)" style="font-family:var(--font-body);font-weight:600;font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:7px;background:var(--surface);">
+          <option value="">Tous les services</option>
+          ${State.services.map(s=>`<option value="${escapeHtml(s)}" ${State.dashCritFilter===s?'selected':''}>${escapeHtml(s)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="card" style="padding:6px 8px;">
+        <div class="hbar-list">${critBars || '<p style="color:var(--ink-faint);padding:10px 6px;font-size:13px;">Pas encore de données.</p>'}</div>
+      </div>
+    </div>
+    <div>
+      <div class="section-title">Flop 5 — audits réalisés par auditeur</div>
+      <div class="card" style="padding:6px 8px;">
+        <div class="hbar-list">${audBars || '<p style="color:var(--ink-faint);padding:10px 6px;font-size:13px;">Pas encore de données.</p>'}</div>
+      </div>
+    </div>
   </div>
 
-  <div class="section-title">Par auditeur</div>
-  <div class="card" style="padding:6px 8px;">
-    <table class="svc-table">
-      <thead><tr><th>Auditeur</th><th>Audits</th><th>Moyenne</th></tr></thead>
-      <tbody>${audRows || '<tr><td colspan="3" style="color:var(--ink-faint);padding:16px;">Aucun audit réalisé pour l\'instant.</td></tr>'}</tbody>
-    </table>
+  <div class="section-title">Évolution des notes par service</div>
+  <div class="card chart-card-sm" style="margin-bottom:14px;">
+    ${lineChart}
+    <div class="line-legend">${lineLegend}</div>
   </div>
 
-  <div class="section-title">
-    Analyse par critère
-    <select onchange="setDashCritFilter(this.value)" style="font-family:var(--font-body);font-weight:600;font-size:12.5px;padding:6px 9px;border:1px solid var(--line);border-radius:7px;background:var(--surface);">
-      <option value="">Tous les services</option>
-      ${State.services.map(s=>`<option value="${escapeHtml(s)}" ${State.dashCritFilter===s?'selected':''}>${escapeHtml(s)}</option>`).join('')}
-    </select>
-  </div>
-  <div class="card" style="padding:6px 8px;">
-    <div class="hbar-list">${critBars || '<p style="color:var(--ink-faint);padding:10px 6px;font-size:13px;">Aucune donnée détaillée pour l\'instant — réalisez un audit pour voir apparaître l\'analyse.</p>'}</div>
-    <p style="font-size:11.5px;color:var(--ink-faint);padding:2px 6px 10px;">Triés du plus faible au plus fort — les premières barres sont les points à travailler en priorité.</p>
+  <div class="section-title">Zoom sur les derniers audits <span style="font-weight:400;color:var(--ink-faint);font-size:12px;">(10 derniers jours)</span></div>
+  <div class="card" style="padding:10px 8px;">
+    <div class="recent-strip">${recentCards || '<p style="color:var(--ink-faint);padding:10px 6px;font-size:13px;">Aucun audit réalisé ces 10 derniers jours.</p>'}</div>
   </div>
   `;
 }
+
+function computeUpcomingReservations(){
+  const shortMonday = wk => new Date(wk+'T00:00:00').toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'});
+  const countFor = wk => State.templates.reduce((n,t)=>{
+    const row = State.auditsRows.find(r=>r['ID']===rowId(wk,t));
+    return n + (row && row['Auditeur'] ? 1 : 0);
+  },0);
+  const wk1 = addWeeks(currentWeekKey(),1);
+  const wk2 = addWeeks(currentWeekKey(),2);
+  return [
+    {label:`S+1 (${shortMonday(wk1)})`, value: countFor(wk1)},
+    {label:`S+2 (${shortMonday(wk2)})`, value: countFor(wk2)},
+  ];
+}
+
+function setDashTarget(kind, val){
+  const n = Math.max(0, parseInt(val,10)||0);
+  if(kind==='audits') State.targetAuditsWeek = n;
+  else if(kind==='reserv') State.targetReservWeek = n;
+  renderUI();
+}
+window.setDashTarget = setDashTarget;
 
 function computeCriteriaStats(serviceFilter){
   const byLabel = {};
@@ -1618,6 +1681,52 @@ window.reloadAll = reloadAll;
 
 /* ============================= UTIL ============================= */
 function escapeHtml(s){ return String(s??'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+function svgBarChart(data, target, opts){
+  opts = opts || {};
+  const w = opts.width||320, h = opts.height||140;
+  const pad = {top:16, right:8, bottom:24, left:8};
+  const innerW = w-pad.left-pad.right, innerH = h-pad.top-pad.bottom;
+  const barColor = opts.color || 'var(--primary)';
+  const maxVal = Math.max(target||0, ...data.map(d=>d.value), 1) * 1.15;
+  const bw = innerW / Math.max(data.length,1);
+  const bars = data.map((d,i)=>{
+    const bh = maxVal ? (d.value/maxVal*innerH) : 0;
+    const bwReal = bw*0.55;
+    const x = pad.left + i*bw + (bw-bwReal)/2;
+    const y = pad.top + (innerH-bh);
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bwReal.toFixed(1)}" height="${Math.max(bh,1).toFixed(1)}" rx="3" fill="${barColor}"/>
+      <text x="${(x+bwReal/2).toFixed(1)}" y="${(y-5).toFixed(1)}" font-size="11" font-weight="700" text-anchor="middle" fill="var(--ink)" font-family="'IBM Plex Mono',monospace">${d.value}</text>
+      <text x="${(x+bwReal/2).toFixed(1)}" y="${(pad.top+innerH+15).toFixed(1)}" font-size="9.5" text-anchor="middle" fill="var(--ink-faint)">${escapeHtml(d.label)}</text>`;
+  }).join('');
+  let targetLine = '';
+  if(target){
+    const ty = pad.top + (innerH - (target/maxVal*innerH));
+    targetLine = `<line x1="${pad.left}" y1="${ty.toFixed(1)}" x2="${(pad.left+innerW).toFixed(1)}" y2="${ty.toFixed(1)}" stroke="var(--danger)" stroke-width="1.5" stroke-dasharray="4,3"/>`;
+  }
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:${h}px;display:block;">${bars}${targetLine}</svg>`;
+}
+
+function svgLineChart(seriesList, opts){
+  opts = opts || {};
+  const w = opts.width||660, h = opts.height||190;
+  const pad = {top:10, right:12, bottom:20, left:28};
+  const innerW = w-pad.left-pad.right, innerH = h-pad.top-pad.bottom;
+  const maxX = Math.max(1, ...seriesList.flatMap(s=>s.points.map(p=>p.x)), 1);
+  const sx = x => pad.left + (maxX<=1 ? innerW/2 : (x-1)/(maxX-1)*innerW);
+  const sy = y => pad.top + innerH - (y/100*innerH);
+  const grid = [0,50,100].map(v=>{
+    const y = sy(v);
+    return `<line x1="${pad.left}" y1="${y.toFixed(1)}" x2="${(pad.left+innerW).toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--line-soft)" stroke-width="1"/><text x="${pad.left-6}" y="${(y+3).toFixed(1)}" font-size="9" text-anchor="end" fill="var(--ink-faint)">${v}</text>`;
+  }).join('');
+  const lines = seriesList.map(s=>{
+    if(!s.points.length) return '';
+    const d = s.points.map((p,i)=>`${i===0?'M':'L'}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(' ');
+    const dots = s.points.map(p=>`<circle cx="${sx(p.x).toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="2.6" fill="${s.color}"/>`).join('');
+    return `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2"/>${dots}`;
+  }).join('');
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:${h}px;display:block;">${grid}${lines}</svg>`;
+}
 
 /* ============================= INIT ============================= */
 refresh({full:true});
